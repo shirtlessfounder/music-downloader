@@ -1,6 +1,7 @@
 /* @vitest-environment node */
 
 import {
+  fetchSoundCloudPlaylistSnapshot,
   mapSoundCloudPlaylistSnapshot,
   parseSoundCloudPlaylistUrl
 } from "./soundcloud-playlist";
@@ -74,5 +75,72 @@ describe("mapSoundCloudPlaylistSnapshot", () => {
         }
       ]
     });
+  });
+});
+
+describe("fetchSoundCloudPlaylistSnapshot", () => {
+  it("uses the documented SoundCloud OAuth2 client-credentials contract", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: "soundcloud-access-token" }), {
+          headers: {
+            "content-type": "application/json"
+          },
+          status: 200
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            kind: "playlist",
+            permalink_url:
+              "https://soundcloud.com/dj-nova/sets/warehouse-finds",
+            title: "Warehouse Finds",
+            tracks: [
+              {
+                id: 111,
+                metadata_artist: "DJ Sealer",
+                title: "DJ Sealer - Warehouse Tool (Extended Mix)",
+                urn: "soundcloud:tracks:111"
+              }
+            ]
+          }),
+          {
+            headers: {
+              "content-type": "application/json"
+            },
+            status: 200
+          }
+        )
+      );
+
+    await fetchSoundCloudPlaylistSnapshot(
+      "https://soundcloud.com/dj-nova/sets/warehouse-finds",
+      {
+        clientId: "soundcloud-client-id",
+        clientSecret: "soundcloud-client-secret",
+        fetchImpl
+      }
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    const [tokenUrl, tokenRequest] = fetchImpl.mock.calls[0] ?? [];
+    const tokenHeaders = tokenRequest?.headers as Record<string, string>;
+    const tokenBody = new URLSearchParams(String(tokenRequest?.body ?? ""));
+
+    expect(String(tokenUrl)).toBe("https://api.soundcloud.com/oauth2/token");
+    expect(tokenRequest?.method).toBe("POST");
+    expect(tokenHeaders).toEqual(
+      expect.objectContaining({
+        Accept: "application/json; charset=utf-8",
+        "Content-Type": "application/x-www-form-urlencoded"
+      })
+    );
+    expect(tokenHeaders.Authorization).toBeUndefined();
+    expect(tokenBody.get("client_id")).toBe("soundcloud-client-id");
+    expect(tokenBody.get("client_secret")).toBe("soundcloud-client-secret");
+    expect(tokenBody.get("grant_type")).toBe("client_credentials");
   });
 });

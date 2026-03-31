@@ -129,7 +129,7 @@ export async function fetchSoundCloudPlaylistSnapshot(
     clientSecret,
     fetchImpl,
     tokenUrl:
-      dependencies.tokenUrl ?? "https://secure.soundcloud.com/oauth/token"
+      dependencies.tokenUrl ?? "https://api.soundcloud.com/oauth2/token"
   });
   const resolveUrl = new URL(
     "/resolve",
@@ -166,13 +166,12 @@ async function fetchSoundCloudAccessToken(input: {
 }) {
   const response = await input.fetchImpl(input.tokenUrl, {
     body: new URLSearchParams({
+      client_id: input.clientId,
+      client_secret: input.clientSecret,
       grant_type: "client_credentials"
     }).toString(),
     headers: {
       Accept: "application/json; charset=utf-8",
-      Authorization: `Basic ${Buffer.from(
-        `${input.clientId}:${input.clientSecret}`
-      ).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
     method: "POST"
