@@ -70,6 +70,15 @@ type RunArtifactRow = {
   created_at: string;
 };
 
+type AcquisitionAttemptRow = {
+  created_at: string;
+  id: string;
+  note: string | null;
+  outcome: AcquisitionAttemptOutcome;
+  provider_key: string;
+  run_track_id: string;
+};
+
 export type RunSummary = {
   id: string;
   sourceType: PlaylistSource;
@@ -102,6 +111,15 @@ export type RunArtifact = {
   kind: ArtifactKind;
   relativePath: string;
   createdAt: string;
+};
+
+export type RunTrackAcquisitionAttempt = {
+  createdAt: string;
+  id: string;
+  note: string | null;
+  outcome: AcquisitionAttemptOutcome;
+  providerKey: string;
+  runTrackId: string;
 };
 
 export type RunDetail = RunSummary & {
@@ -219,6 +237,19 @@ function mapRunArtifact(row: RunArtifactRow): RunArtifact {
     kind: row.artifact_kind,
     relativePath: row.relative_path,
     runId: row.run_id
+  };
+}
+
+function mapRunTrackAcquisitionAttempt(
+  row: AcquisitionAttemptRow
+): RunTrackAcquisitionAttempt {
+  return {
+    createdAt: row.created_at,
+    id: row.id,
+    note: row.note,
+    outcome: row.outcome,
+    providerKey: row.provider_key,
+    runTrackId: row.run_track_id
   };
 }
 
@@ -566,6 +597,65 @@ export function createRunStore(options: RunStoreOptions = {}) {
       return this.getRun(input.runId)?.artifacts.at(-1) ?? null;
     },
 
+    replaceRunArtifacts(runId: string, artifacts: RecordRunArtifactInput[]) {
+      const now = getTimestamp();
+
+      getRunOrThrow(runId);
+
+      database.exec("BEGIN");
+
+      try {
+        const kinds = [...new Set(artifacts.map((artifact) => artifact.kind))];
+
+        if (kinds.length > 0) {
+          const placeholders = kinds.map(() => "?").join(", ");
+
+          database
+            .prepare(
+              `
+                DELETE FROM run_artifacts
+                WHERE run_id = ?
+                  AND artifact_kind IN (${placeholders})
+              `
+            )
+            .run(runId, ...kinds);
+        }
+
+        const insertArtifact = database.prepare(
+          `
+            INSERT INTO run_artifacts (
+              id,
+              run_id,
+              artifact_kind,
+              relative_path,
+              created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+          `
+        );
+
+        for (const artifact of artifacts) {
+          insertArtifact.run(
+            crypto.randomUUID(),
+            artifact.runId,
+            artifact.kind,
+            artifact.relativePath,
+            now
+          );
+        }
+
+        database
+          .prepare("UPDATE runs SET updated_at = ? WHERE id = ?")
+          .run(now, runId);
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+
+      return this.getRun(runId)?.artifacts ?? [];
+    },
+
     replaceRunTracks(runId: string, tracks: ReplaceRunTrackInput[]): RunTrack[] {
       const now = getTimestamp();
 
@@ -623,6 +713,25 @@ export function createRunStore(options: RunStoreOptions = {}) {
 
     resumeInterruptedRuns() {
       return requeueInterruptedRuns();
+    },
+
+    listRunTrackAttempts(runId: string): RunTrackAcquisitionAttempt[] {
+      getRunOrThrow(runId);
+
+      const attempts = database
+        .prepare(
+          `
+            SELECT acquisition_attempts.*
+            FROM acquisition_attempts
+            INNER JOIN run_tracks
+              ON run_tracks.id = acquisition_attempts.run_track_id
+            WHERE run_tracks.run_id = ?
+            ORDER BY acquisition_attempts.created_at DESC, acquisition_attempts.id DESC
+          `
+        )
+        .all(runId) as AcquisitionAttemptRow[];
+
+      return attempts.map(mapRunTrackAcquisitionAttempt);
     },
 
     transitionRunStatus(runId: string, nextStatus: RunStatus): RunDetail {
