@@ -11,9 +11,11 @@ import {
   buildProviderMissResult,
   buildProviderRejectedResult,
   defineAutomaticProvider,
+  defineReviewQueueProvider,
   type AutomaticProviderDefinition,
   type ProviderCandidate,
-  type ProviderRegistry
+  type ProviderRegistry,
+  type ReviewQueueProviderDefinition
 } from "@/features/providers/provider-registry";
 import { createRunStore, type RunStore, type RunTrack } from "@/features/runs/run-store";
 
@@ -34,10 +36,14 @@ function createTempWorkspace() {
   };
 }
 
-function createStubRegistry(providers: AutomaticProviderDefinition[]) {
+function createStubRegistry(
+  automaticProviders: AutomaticProviderDefinition[],
+  reviewProviders: ReviewQueueProviderDefinition[] = []
+) {
   return {
-    listAutomatic: () => providers
-  } satisfies Pick<ProviderRegistry, "listAutomatic">;
+    listAutomatic: () => automaticProviders,
+    listReviewQueue: () => reviewProviders
+  } satisfies Pick<ProviderRegistry, "listAutomatic" | "listReviewQueue">;
 }
 
 function createStubRun(
@@ -399,6 +405,151 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           })
         })
       );
+    } finally {
+      runStore.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
+  it("queues Beatport review candidates when automatic providers exhaust eligible tracks", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+    const soundCloudProvider = defineAutomaticProvider({
+      id: "soundcloud-direct-downloads",
+      displayName: "SoundCloud Direct Downloads",
+      authorizationBasis: "uploader-enabled-download",
+      priceTier: "free",
+      priorityRank: 10,
+      supportedFormats: ["original-upload-format"],
+      search: async () =>
+        buildProviderMissResult({
+          detail: "No uploader-enabled download matched this track on SoundCloud.",
+          providerId: "soundcloud-direct-downloads",
+          providerName: "SoundCloud Direct Downloads",
+          reason: "no-search-results",
+          trackMissReason: "no-authorized-source-match"
+        }),
+      acquire: async () => {
+        throw new Error("SoundCloud acquire should not run after a miss.");
+      }
+    });
+    const bandcampProvider = defineAutomaticProvider({
+      id: "bandcamp",
+      displayName: "Bandcamp",
+      authorizationBasis: "rights-holder-storefront",
+      priceTier: "free-or-owned",
+      priorityRank: 20,
+      supportedFormats: ["mp3", "wav"],
+      search: async () =>
+        buildProviderMissResult({
+          detail: "No Bandcamp result matched the requested track.",
+          providerId: "bandcamp",
+          providerName: "Bandcamp",
+          reason: "no-search-results",
+          trackMissReason: "no-authorized-source-match"
+        }),
+      acquire: async () => {
+        throw new Error("Bandcamp acquire should not run after a miss.");
+      }
+    });
+    const beatportProvider = defineReviewQueueProvider({
+      id: "beatport",
+      displayName: "Beatport",
+      authorizationBasis: "purchase-entitlement",
+      priorityRank: 90,
+      supportedFormats: ["mp3", "wav", "aiff"],
+      search: async ({ track }) => ({
+        outcome: "candidates" as const,
+        candidates: [
+          {
+            artistName: track.primaryArtist ?? "Unknown Artist",
+            authorizationBasis: "purchase-entitlement",
+            availableFormats: ["mp3", "wav"],
+            candidateId: `beatport-${track.normalizedTitle}`,
+            durationSeconds: track.durationSeconds ?? 301,
+            mixConfidence: track.mix.confidence,
+            mixLabel: track.mix.displayLabel,
+            priceTier: "paid",
+            providerId: "beatport",
+            providerName: "Beatport",
+            provenance: {
+              discoveredVia: "search" as const,
+              providerTrackId: `beatport-${track.normalizedTitle}`,
+              providerUrl: `https://www.beatport.com/search?q=${encodeURIComponent(
+                `${track.primaryArtist ?? ""} ${track.title}`
+              )}`,
+              searchQuery: `${track.primaryArtist ?? ""} ${track.title}`.trim()
+            },
+            title: track.title
+          }
+        ]
+      }),
+      queueForReview: async ({ candidate }) => ({
+        outcome: "queued-for-review" as const,
+        candidate,
+        review: {
+          queueName: "beatport-review",
+          summary: "Queued after all automatic free-source providers missed."
+        }
+      })
+    });
+
+    try {
+      const run = await submitLiveRunFromPlaylistUrl(
+        "https://soundcloud.com/dj-nova/sets/warehouse-finds",
+        {
+          createRunFromPlaylistUrl: async (playlistUrl) =>
+            createStubRun(runStore, playlistUrl, [
+              {
+                artist: "DJ Sealer",
+                sourcePosition: 1,
+                title: "Warehouse Tool",
+                version: "Extended Mix"
+              },
+              {
+                artist: "Selector Two",
+                sourcePosition: 2,
+                title: "Loft Shaker"
+              }
+            ]),
+          providerRegistry: createStubRegistry(
+            [soundCloudProvider, bandcampProvider],
+            [beatportProvider]
+          ),
+          runStore,
+          workspaceRoot: tempWorkspace.workspaceRoot
+        }
+      );
+
+      expect(run.status).toBe("awaiting-approval");
+      expect(run.artifacts).toEqual([]);
+      expect(run.tracks.map((track) => [track.sourcePosition, track.status])).toEqual([
+        [1, "awaiting-approval"],
+        [2, "awaiting-approval"]
+      ]);
+      expect(
+        run.reviewQueue.map((review) => [
+          review.candidateId,
+          review.queueName,
+          review.status
+        ])
+      ).toEqual([
+        ["beatport-warehouse tool", "beatport-review", "queued"],
+        ["beatport-loft shaker", "beatport-review", "queued"]
+      ]);
+
+      const attempts = runStore.listRunTrackAttempts(run.id);
+
+      expect(attempts.map((attempt) => [attempt.providerKey, attempt.outcome])).toEqual([
+        ["bandcamp", "skipped"],
+        ["soundcloud-direct-downloads", "skipped"],
+        ["bandcamp", "skipped"],
+        ["soundcloud-direct-downloads", "skipped"]
+      ]);
+      expect(
+        attempts.some((attempt) => attempt.providerKey === "track-matcher")
+      ).toBe(false);
     } finally {
       runStore.close();
       tempWorkspace.cleanup();
