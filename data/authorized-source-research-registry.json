@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "lastReviewed": "2026-03-30",
+  "orderingPolicy": {
+    "freeDirectFirst": true,
+    "beatportLastResortPaidFallback": true,
+    "disallowedApproaches": [
+      "stream-ripping",
+      "preview capture",
+      "DRM bypass",
+      "unlicensed mirrors"
+    ]
+  },
+  "sources": [
+    {
+      "id": "soundcloud-direct-downloads",
+      "name": "SoundCloud Direct Downloads",
+      "scopeDecision": "in-scope-with-constraints",
+      "scopeRationale": "This is an uploader-authorized free/direct source and should be attempted before any paid fallback, but only on tracks where downloads are explicitly enabled.",
+      "implementationBucket": "free-auto",
+      "priorityRank": 10,
+      "authorizationRationale": "SoundCloud documents that uploaders can enable downloads on their own tracks and that listeners receive the original uploaded file when that option is turned on.",
+      "acquisitionMode": "authenticated per-track direct download",
+      "automationApproach": "Use track metadata or the authorized track page to detect whether the uploader enabled downloads, then fetch the original file through an authenticated browser/session flow.",
+      "automationConfidence": "medium",
+      "supportedFormats": [
+        "original-upload-format"
+      ],
+      "djElectronicFit": "medium",
+      "notableRisks": [
+        "Downloads are track-level rather than playlist-level, so playlist jobs need per-track extraction and matching.",
+        "Free downloads depend on uploader settings, and some tracks expose only external buy/download links.",
+        "The original uploaded format varies, so later provider code must normalize format expectations instead of assuming MP3 or WAV."
+      ],
+      "officialReferences": [
+        {
+          "label": "Downloading tracks",
+          "url": "https://help.soundcloud.com/hc/en-us/articles/115003448787-Downloading-tracks"
+        },
+        {
+          "label": "Enabling Downloads For Your Track",
+          "url": "https://help.soundcloud.com/hc/en-us/articles/31423603670043-Enabling-Downloads-For-Your-Track"
+        },
+        {
+          "label": "How do I upload a track to SoundCloud?",
+          "url": "https://help.soundcloud.com/hc/en-us/articles/115003450667-How-do-I-upload-a-track-to-SoundCloud-"
+        },
+        {
+          "label": "Stream Rippers",
+          "url": "https://help.soundcloud.com/hc/en-us/articles/115003448527"
+        }
+      ]
+    },
+    {
+      "id": "bandcamp",
+      "name": "Bandcamp",
+      "scopeDecision": "in-scope-with-constraints",
+      "scopeRationale": "Bandcamp is an artist/label-controlled authorized download source and fits the free/direct-first rule, but current product scope should stay on free or already-owned entitlements unless paid scope expands beyond Beatport.",
+      "implementationBucket": "free-auto",
+      "priorityRank": 20,
+      "authorizationRationale": "Bandcamp offers artist-controlled downloads in multiple formats and supports no-minimum-price releases plus redemption/download flows that originate from the rights holder's own storefront.",
+      "acquisitionMode": "download page after free checkout, redemption, or existing entitlement",
+      "automationApproach": "Prefer zero-price/no-minimum releases or already-owned downloads, then use the release or account download flow through an authenticated browser/session layer.",
+      "automationConfidence": "medium",
+      "supportedFormats": [
+        "mp3-v0",
+        "mp3-320",
+        "wav",
+        "aiff",
+        "flac",
+        "aac",
+        "ogg-vorbis",
+        "alac"
+      ],
+      "djElectronicFit": "high",
+      "notableRisks": [
+        "Bandcamp also supports paid checkout, so provider work must avoid adding a second paid queue without an explicit product decision.",
+        "Some download links are tied to purchase emails or collection entitlements, which means session and entitlement state matters.",
+        "The catalog is broad, so later matching should bias toward artist/label pages already surfaced by playlist metadata or search."
+      ],
+      "officialReferences": [
+        {
+          "label": "In which formats can I download my purchases?",
+          "url": "https://get.bandcamp.help/hc/en-us/articles/23020648367255-In-which-formats-can-I-download-my-purchases"
+        },
+        {
+          "label": "Can I re-download my purchases?",
+          "url": "https://get.bandcamp.help/hc/en-us/articles/23020664186647-Can-I-re-download-my-purchases"
+        },
+        {
+          "label": "Where's my download link?",
+          "url": "https://get.bandcamp.help/hc/en-us/articles/23020729555223-Where-s-my-download-link"
+        },
+        {
+          "label": "Free monthly credits for download codes",
+          "url": "https://get.bandcamp.help/hc/en-us/articles/23020653387543-You-guys-said-I-d-get-200-more-codes-for-free-every-month-Well-where-are-they"
+        }
+      ]
+    },
+    {
+      "id": "juno-download",
+      "name": "Juno Download",
+      "scopeDecision": "defer",
+      "scopeRationale": "Juno Download is a legitimate DJ-friendly store, but it is a paid source and therefore should stay deferred while the current product keeps Beatport as the only paid fallback.",
+      "implementationBucket": "defer",
+      "priorityRank": 40,
+      "authorizationRationale": "Juno Download sells full-length digital releases directly from the store in downloadable formats and positions itself as a DJ-oriented catalog.",
+      "acquisitionMode": "paid checkout with account download retrieval",
+      "automationApproach": "If paid-source scope expands later, implement it as an authenticated browser checkout plus download-history retrieval flow rather than as an automatic acquisition path today.",
+      "automationConfidence": "medium",
+      "supportedFormats": [
+        "mp3",
+        "wav",
+        "flac",
+        "aiff",
+        "alac"
+      ],
+      "djElectronicFit": "high",
+      "notableRisks": [
+        "It duplicates the paid-store role already reserved for Beatport in the approved product scope.",
+        "Some releases are gated by territory or rights restrictions, which would complicate deterministic acquisition.",
+        "Future implementation would need clear rules for album-only items and multi-format selection."
+      ],
+      "officialReferences": [
+        {
+          "label": "Welcome to Juno Download",
+          "url": "https://www.junodownload.com/welcome-to-junodownload/"
+        },
+        {
+          "label": "Juno Download home",
+          "url": "https://www.junodownload.com/"
+        },
+        {
+          "label": "Example release format options",
+          "url": "https://www.junodownload.com/products/50/5583711-02/"
+        }
+      ]
+    },
+    {
+      "id": "traxsource",
+      "name": "Traxsource",
+      "scopeDecision": "defer",
+      "scopeRationale": "Traxsource is another legitimate DJ-focused paid store, but it should remain deferred until the product intentionally broadens the paid fallback beyond Beatport.",
+      "implementationBucket": "defer",
+      "priorityRank": 50,
+      "authorizationRationale": "Traxsource sells DRM-free downloads in DJ-relevant formats through its own storefront and is focused on club/electronic music.",
+      "acquisitionMode": "paid checkout with account-linked downloads",
+      "automationApproach": "Treat this as future browser-assisted checkout and library retrieval work only if the product expands its paid-source scope.",
+      "automationConfidence": "medium",
+      "supportedFormats": [
+        "mp3",
+        "aiff",
+        "wav"
+      ],
+      "djElectronicFit": "high",
+      "notableRisks": [
+        "It conflicts with the current Beatport-only paid fallback rule.",
+        "Format selection happens at purchase/download time, so provider code would need explicit format handling.",
+        "Authenticated checkout and account state are mandatory, making it a higher-friction source than free/direct candidates."
+      ],
+      "officialReferences": [
+        {
+          "label": "Does Traxsource use any DRM?",
+          "url": "https://traxsource.zendesk.com/hc/en-us/articles/204567315-Does-Traxsource-use-any-DRM-digital-rights-management"
+        },
+        {
+          "label": "What file formats does Traxsource sell?",
+          "url": "https://traxsource.zendesk.com/hc/en-us/articles/204567305-What-file-formats-does-Traxsource-sell"
+        },
+        {
+          "label": "How do I select or change the audio format?",
+          "url": "https://traxsource.zendesk.com/hc/en-us/articles/115002343866-How-do-I-select-or-change-the-audio-format"
+        }
+      ]
+    },
+    {
+      "id": "beatport",
+      "name": "Beatport",
+      "scopeDecision": "required-fallback",
+      "scopeRationale": "The approved product design explicitly requires Beatport as the last-resort paid fallback after free/direct sources are exhausted.",
+      "implementationBucket": "paid-review-queue",
+      "priorityRank": 90,
+      "authorizationRationale": "Beatport is a direct digital storefront for purchased DJ downloads, with explicit support for downloading owned tracks and upgrading store purchases to lossless formats.",
+      "acquisitionMode": "aggregated paid cart review followed by account download",
+      "automationApproach": "Queue exact or high-confidence matches for human approval, then use an authenticated browser/session flow to purchase once per run and retrieve owned downloads.",
+      "automationConfidence": "high",
+      "supportedFormats": [
+        "mp3",
+        "wav",
+        "aiff"
+      ],
+      "djElectronicFit": "high",
+      "notableRisks": [
+        "Beatport must stay the last-resort paid fallback rather than an automatic first-pass provider.",
+        "Purchase and re-download limits mean later provider code needs ownership/account-state tracking.",
+        "Preview playback or streaming integrations are not authorized acquisition paths and must stay excluded."
+      ],
+      "officialReferences": [
+        {
+          "label": "Beatport about",
+          "url": "https://about.beatport.com/"
+        },
+        {
+          "label": "How do I re-download my tracks?",
+          "url": "https://support.beatport.com/hc/en-us/articles/4413007879188-How-do-I-re-download-my-tracks"
+        },
+        {
+          "label": "Upgrading Purchased tracks from MP3 to Lossless",
+          "url": "https://support.beatport.com/hc/en-us/articles/8980748912020-Upgrading-Purchased-tracks-from-MP3-to-Lossless-Beatport-Store-Only"
+        },
+        {
+          "label": "Can I DJ with the track that I purchase from Beatport?",
+          "url": "https://support.beatport.com/hc/en-us/articles/4412316699668--Can-I-DJ-with-the-track-that-I-purchase-from-Beatport"
+        }
+      ]
+    }
+  ]
+}
