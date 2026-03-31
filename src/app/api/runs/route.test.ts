@@ -30,17 +30,17 @@ afterEach(() => {
 });
 
 describe("/api/runs", () => {
-  it("returns fixture-backed runs without invoking the live orchestrator", async () => {
+  it("submits runs through the shared live orchestrator without route-level fixture bypasses", async () => {
     await withTempDatabase(async (databasePath) => {
       vi.resetModules();
 
       const playlistUrl = "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9";
-      const fixtureRun = {
+      const createdRun = {
         artifactCount: 3,
         artifacts: [],
         createdAt: "2026-03-31T21:00:00.000Z",
-        id: "run-fixture",
-        playlistTitle: "Fixture Warehouse Starters",
+        id: "run-live-pipeline",
+        playlistTitle: "Warehouse Starters",
         playlistUrl,
         resumeAfterStatus: null,
         reviewQueue: [],
@@ -50,12 +50,11 @@ describe("/api/runs", () => {
         tracks: [],
         updatedAt: "2026-03-31T21:05:00.000Z"
       };
-      const maybeCreateFixtureRunFromPlaylistUrl = vi.fn().mockResolvedValue(fixtureRun);
-      const submitLiveRunFromPlaylistUrl = vi.fn();
+      const submitLiveRunFromPlaylistUrl = vi.fn().mockResolvedValue(createdRun);
 
-      vi.doMock("@/features/e2e/e2e-fixtures", () => ({
-        maybeCreateFixtureRunFromPlaylistUrl
-      }));
+      vi.doMock("@/features/e2e/e2e-fixtures", () => {
+        throw new Error("route should not import e2e fixture submission bypasses");
+      });
       vi.doMock("@/features/runs/live-run-orchestrator", () => ({
         submitLiveRunFromPlaylistUrl
       }));
@@ -74,9 +73,8 @@ describe("/api/runs", () => {
 
       expect(createResponse.status).toBe(201);
       expect(existsSync(databasePath)).toBe(false);
-      expect(maybeCreateFixtureRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
-      expect(submitLiveRunFromPlaylistUrl).not.toHaveBeenCalled();
-      await expect(createResponse.json()).resolves.toEqual(fixtureRun);
+      expect(submitLiveRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
+      await expect(createResponse.json()).resolves.toEqual(createdRun);
     });
   });
 
@@ -252,12 +250,8 @@ describe("/api/runs", () => {
         tracks: [],
         updatedAt: "2026-03-31T21:05:00.000Z"
       };
-      const maybeCreateFixtureRunFromPlaylistUrl = vi.fn().mockResolvedValue(null);
       const submitLiveRunFromPlaylistUrl = vi.fn().mockResolvedValue(createdRun);
 
-      vi.doMock("@/features/e2e/e2e-fixtures", () => ({
-        maybeCreateFixtureRunFromPlaylistUrl
-      }));
       vi.doMock("@/features/runs/live-run-orchestrator", () => ({
         submitLiveRunFromPlaylistUrl
       }));
@@ -275,7 +269,6 @@ describe("/api/runs", () => {
       );
 
       expect(response.status).toBe(201);
-      expect(maybeCreateFixtureRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
       expect(submitLiveRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
       await expect(response.json()).resolves.toEqual(createdRun);
     });

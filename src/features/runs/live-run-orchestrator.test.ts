@@ -556,6 +556,90 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     }
   });
 
+  it("resolves the Spotify happy-path fixture through the live orchestration path when e2e fixture mode is enabled", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });
+    const originalFixtureMode = process.env.MUSIC_DOWNLOADER_E2E_FIXTURES;
+
+    process.env.MUSIC_DOWNLOADER_E2E_FIXTURES = "1";
+
+    try {
+      const run = await submitLiveRunFromPlaylistUrl(
+        "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
+        {
+          runStore,
+          workspaceRoot: tempWorkspace.workspaceRoot
+        }
+      );
+
+      expect(run.playlistTitle).toBe("Warehouse Starters");
+      expect(run.status).toBe("completed");
+      expect(run.tracks.map((track) => [track.sourcePosition, track.status])).toEqual([
+        [1, "acquired"],
+        [2, "acquired"]
+      ]);
+      expect([...run.artifacts.map((artifact) => artifact.kind)].sort()).toEqual([
+        "downloads-zip",
+        "manifest-json",
+        "misses-txt"
+      ]);
+    } finally {
+      if (originalFixtureMode === undefined) {
+        delete process.env.MUSIC_DOWNLOADER_E2E_FIXTURES;
+      } else {
+        process.env.MUSIC_DOWNLOADER_E2E_FIXTURES = originalFixtureMode;
+      }
+
+      runStore.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
+  it("resolves the SoundCloud review-lane fixture through the live orchestration path when e2e fixture mode is enabled", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });
+    const originalFixtureMode = process.env.MUSIC_DOWNLOADER_E2E_FIXTURES;
+
+    process.env.MUSIC_DOWNLOADER_E2E_FIXTURES = "1";
+
+    try {
+      const run = await submitLiveRunFromPlaylistUrl(
+        "https://soundcloud.com/dj-nova/sets/warehouse-finds",
+        {
+          runStore,
+          workspaceRoot: tempWorkspace.workspaceRoot
+        }
+      );
+
+      expect(run.playlistTitle).toBe("Warehouse Finds");
+      expect(run.status).toBe("awaiting-approval");
+      expect(run.artifacts).toEqual([]);
+      expect(run.tracks.map((track) => [track.sourcePosition, track.status])).toEqual([
+        [1, "awaiting-approval"],
+        [2, "awaiting-approval"]
+      ]);
+      expect(
+        run.reviewQueue.map((review) => [
+          review.candidateId,
+          review.queueName,
+          review.status
+        ])
+      ).toEqual([
+        ["beatport-warehouse tool", "beatport-review", "queued"],
+        ["beatport-loft shaker", "beatport-review", "queued"]
+      ]);
+    } finally {
+      if (originalFixtureMode === undefined) {
+        delete process.env.MUSIC_DOWNLOADER_E2E_FIXTURES;
+      } else {
+        process.env.MUSIC_DOWNLOADER_E2E_FIXTURES = originalFixtureMode;
+      }
+
+      runStore.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
   it("marks the run failed when automatic providers end with a retryable provider rejection", async () => {
     const tempWorkspace = createTempWorkspace();
     const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });

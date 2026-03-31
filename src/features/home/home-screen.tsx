@@ -172,8 +172,9 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
           <p className="hero-kicker">Local operator shell</p>
           <h1>Authorized-source acquisition</h1>
           <p className="hero-copy">
-            Intake one Spotify or SoundCloud playlist URL, then hand the
-            background job, matching, and artifact work off to later tasks.
+            Queue one Spotify or SoundCloud playlist and let the local
+            orchestrator ingest tracks, match authorized sources, package
+            artifacts, and open Beatport review when paid fallback is required.
           </p>
         </div>
         <div className="hero-sidecar">
@@ -183,8 +184,9 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
               : "No runs yet"}
           </StatusBadge>
           <p className="hero-note">
-            Queue authorized playlist runs into the local SQLite job store.
-            Acquisition, matching, and packaging workers land in later tasks.
+            Playwright fixture mode keeps end-to-end verification deterministic.
+            Live operator runs still need Spotify and SoundCloud credentials
+            configured before intake starts.
           </p>
         </div>
       </header>
@@ -193,7 +195,9 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
         <Panel
           eyebrow="Intake"
           title="Playlist Intake"
-          footer={<span className="panel-caption">Creates queued run records</span>}
+          footer={
+            <span className="panel-caption">Starts the live orchestration path</span>
+          }
         >
           <form className="panel-form" onSubmit={handleSubmit}>
             <label className="field" htmlFor="playlist-url">
@@ -218,8 +222,8 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
                 {isSubmitting ? "Queueing..." : "Queue Playlist"}
               </button>
               <p className="field-hint">
-                Creates a queued local run record and exposes status polling for
-                later background work.
+                Submits the playlist into intake, matching, acquisition,
+                packaging, and Beatport review queueing.
               </p>
             </div>
 

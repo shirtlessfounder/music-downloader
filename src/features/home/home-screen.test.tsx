@@ -17,7 +17,14 @@ describe("HomeScreen", () => {
     expect(screen.getByText(/downloads\.zip/i)).toBeVisible();
     expect(screen.getAllByText(/no runs yet/i)).toHaveLength(2);
     expect(
-      screen.getByText(/sqlite persistence is active for new acquisition jobs/i)
+      screen.getByText(
+        /let the local orchestrator ingest tracks, match authorized sources, package artifacts, and open beatport review/i
+      )
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /playwright fixture mode keeps end-to-end verification deterministic\. live operator runs still need spotify and soundcloud credentials configured before intake starts/i
+      )
     ).toBeVisible();
   });
 
