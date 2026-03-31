@@ -95,17 +95,25 @@ describe("createRunStore", () => {
     }
   });
 
-  it("requeues interrupted runs without losing per-track progress", () => {
+  it("requeues interrupted runs on store boot without losing per-track progress", () => {
     const tempDatabase = createTempDatabasePath();
+    let initialStore:
+      | ReturnType<typeof createRunStore>
+      | undefined;
+    let resumedStore:
+      | ReturnType<typeof createRunStore>
+      | undefined;
 
     try {
-      const store = createRunStore({ databasePath: tempDatabase.databasePath });
-      const run = store.createRun({
+      initialStore = createRunStore({
+        databasePath: tempDatabase.databasePath
+      });
+      const run = initialStore.createRun({
         playlistUrl: "https://open.spotify.com/playlist/37i9dQZF1DWZxZ8T6qM2Yj",
         sourceType: "spotify"
       });
 
-      const tracks = store.replaceRunTracks(run.id, [
+      const tracks = initialStore.replaceRunTracks(run.id, [
         {
           artist: "Artist One",
           sourcePosition: 1,
@@ -120,14 +128,18 @@ describe("createRunStore", () => {
         }
       ]);
 
-      store.transitionRunStatus(run.id, "ingesting");
-      store.transitionRunStatus(run.id, "matching");
-      store.updateRunTrackStatus(tracks[0].id, "matched");
-      store.updateRunTrackStatus(tracks[1].id, "failed");
+      initialStore.transitionRunStatus(run.id, "ingesting");
+      initialStore.transitionRunStatus(run.id, "matching");
+      initialStore.updateRunTrackStatus(tracks[0].id, "matched");
+      initialStore.updateRunTrackStatus(tracks[1].id, "failed");
+      initialStore.close();
+      initialStore = undefined;
 
-      expect(store.resumeInterruptedRuns()).toBe(1);
+      resumedStore = createRunStore({
+        databasePath: tempDatabase.databasePath
+      });
 
-      expect(store.getRunStatusSnapshot(run.id)).toEqual(
+      expect(resumedStore.getRunStatusSnapshot(run.id)).toEqual(
         expect.objectContaining({
           id: run.id,
           resumeAfterStatus: "matching",
@@ -135,7 +147,7 @@ describe("createRunStore", () => {
         })
       );
       expect(
-        store
+        resumedStore
           .getRun(run.id)
           ?.tracks.map((track) => [track.sourcePosition, track.status] satisfies [
             number,
@@ -146,6 +158,8 @@ describe("createRunStore", () => {
         [2, "failed"]
       ]);
     } finally {
+      initialStore?.close();
+      resumedStore?.close();
       tempDatabase.cleanup();
     }
   });

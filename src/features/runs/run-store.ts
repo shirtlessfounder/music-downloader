@@ -343,6 +343,42 @@ export function createRunStore(options: RunStoreOptions = {}) {
     return run;
   }
 
+  function requeueInterruptedRuns() {
+    const now = getTimestamp();
+    const runsToResume = database
+      .prepare(
+        `
+          SELECT id, status
+          FROM runs
+          WHERE status IN (?, ?, ?)
+        `
+      )
+      .all(...resumableRunStatuses) as Array<{
+      id: string;
+      status: RunStatus;
+    }>;
+
+    const updateStatement = database.prepare(
+      `
+        UPDATE runs
+        SET status = ?,
+            resume_after_status = ?,
+            updated_at = ?,
+            completed_at = ?,
+            failed_at = ?
+        WHERE id = ?
+      `
+    );
+
+    for (const run of runsToResume) {
+      updateStatement.run("queued", run.status, now, null, null, run.id);
+    }
+
+    return runsToResume.length;
+  }
+
+  requeueInterruptedRuns();
+
   return {
     close() {
       database.close();
@@ -586,37 +622,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
     },
 
     resumeInterruptedRuns() {
-      const now = getTimestamp();
-      const runsToResume = database
-        .prepare(
-          `
-            SELECT id, status
-            FROM runs
-            WHERE status IN (?, ?, ?)
-          `
-        )
-        .all(...resumableRunStatuses) as Array<{
-        id: string;
-        status: RunStatus;
-      }>;
-
-      const updateStatement = database.prepare(
-        `
-          UPDATE runs
-          SET status = ?,
-              resume_after_status = ?,
-              updated_at = ?,
-              completed_at = ?,
-              failed_at = ?
-          WHERE id = ?
-        `
-      );
-
-      for (const run of runsToResume) {
-        updateStatement.run("queued", run.status, now, null, null, run.id);
-      }
-
-      return runsToResume.length;
+      return requeueInterruptedRuns();
     },
 
     transitionRunStatus(runId: string, nextStatus: RunStatus): RunDetail {
