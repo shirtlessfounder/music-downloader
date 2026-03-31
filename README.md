@@ -7,7 +7,7 @@ Local web app for authorized-source playlist acquisition, optimized for DJ and e
 - Local-only operator workflow
 - Authorized-source acquisition only
 - No stream-ripping, bypass, or unauthorized-source behavior
-- Current state: bootstrap app shell with placeholder intake and recent-run surfaces
+- Current state: app shell with persisted Spotify and SoundCloud playlist intake
 
 ## Requirements
 
@@ -18,6 +18,22 @@ Local web app for authorized-source playlist acquisition, optimized for DJ and e
 
 ```bash
 npm install
+```
+
+To enable authorized Spotify playlist ingestion through the Spotify Web API
+client-credentials flow,
+set these Spotify env vars before running the app:
+
+```bash
+export SPOTIFY_CLIENT_ID=your-spotify-client-id
+export SPOTIFY_CLIENT_SECRET=your-spotify-client-secret
+```
+
+Spotify playlist item requests default to the `US` market. Override that for
+your local operator setup if needed:
+
+```bash
+export SPOTIFY_MARKET=US
 ```
 
 To enable authorized SoundCloud playlist ingestion through the official API,
@@ -47,5 +63,5 @@ npm run test:e2e
 
 ## Notes
 
-- The landing page currently establishes the shared shell, form controls, and placeholder recent-runs area for later tasks.
+- The landing page currently provides the shared shell, form controls, and persisted recent-runs area for later tasks.
 - Background jobs, provider matching, manifests, misses, and artifact packaging land in later issues.

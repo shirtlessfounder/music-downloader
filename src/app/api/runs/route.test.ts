@@ -24,9 +24,78 @@ async function withTempDatabase(
 }
 
 describe("/api/runs", () => {
-  it("creates a queued run and exposes its pollable status", async () => {
+  it("ingests a Spotify playlist into persisted run data and exposes its pollable status", async () => {
     await withTempDatabase(async (databasePath) => {
       vi.resetModules();
+
+      const originalClientId = process.env.SPOTIFY_CLIENT_ID;
+      const originalClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+      const originalMarket = process.env.SPOTIFY_MARKET;
+
+      process.env.SPOTIFY_CLIENT_ID = "spotify-client-id";
+      process.env.SPOTIFY_CLIENT_SECRET = "spotify-client-secret";
+      process.env.SPOTIFY_MARKET = "US";
+
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ access_token: "spotify-access-token" }), {
+            headers: {
+              "content-type": "application/json"
+            },
+            status: 200
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              external_urls: {
+                spotify:
+                  "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9"
+              },
+              name: "Warehouse Starters"
+            }),
+            {
+              headers: {
+                "content-type": "application/json"
+              },
+              status: 200
+            }
+          )
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  track: {
+                    artists: [{ name: "Anyma" }, { name: "Chris Avantgarde" }],
+                    duration_ms: 391578,
+                    id: "0abc123",
+                    name: "Consciousness (Extended Mix)",
+                    type: "track"
+                  }
+                },
+                {
+                  track: {
+                    artists: [{ name: "Kx5" }],
+                    duration_ms: 265000,
+                    id: "0def456",
+                    name: "Escape",
+                    type: "track"
+                  }
+                }
+              ],
+              next: null
+            }),
+            {
+              headers: {
+                "content-type": "application/json"
+              },
+              status: 200
+            }
+          )
+        );
 
       const [{ POST }, { GET }, runStoreModule] = await Promise.all([
         import("./route"),
@@ -34,11 +103,119 @@ describe("/api/runs", () => {
         import("@/features/runs/run-store")
       ]);
 
-      const createResponse = await POST(
+      try {
+        const createResponse = await POST(
+          new Request("http://localhost/api/runs", {
+            body: JSON.stringify({
+              playlistUrl:
+                "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9"
+            }),
+            headers: {
+              "content-type": "application/json"
+            },
+            method: "POST"
+          })
+        );
+
+        expect(createResponse.status).toBe(201);
+        expect(existsSync(databasePath)).toBe(true);
+        expect(fetchSpy).toHaveBeenCalledTimes(3);
+
+        const createdRun = (await createResponse.json()) as {
+          id: string;
+          playlistTitle: string | null;
+          sourceType: string;
+          status: string;
+          trackCount: number;
+          tracks: Array<{
+            artist: string;
+            title: string;
+            version: string | null;
+          }>;
+        };
+        const pollResponse = await GET(
+          new Request(`http://localhost/api/runs/${createdRun.id}`),
+          {
+            params: Promise.resolve({ runId: createdRun.id })
+          }
+        );
+        const polledRun = (await pollResponse.json()) as {
+          id: string;
+          playlistTitle: string | null;
+          sourceType: string;
+          status: string;
+          trackCount: number;
+          tracks: Array<{
+            artist: string;
+            title: string;
+            version: string | null;
+          }>;
+        };
+
+        expect(createdRun).toEqual(
+          expect.objectContaining({
+            playlistTitle: "Warehouse Starters",
+            sourceType: "spotify",
+            status: "queued",
+            trackCount: 2
+          })
+        );
+        expect(createdRun.tracks).toEqual([
+          expect.objectContaining({
+            artist: "Anyma",
+            title: "Consciousness",
+            version: "Extended Mix"
+          }),
+          expect.objectContaining({
+            artist: "Kx5",
+            title: "Escape",
+            version: null
+          })
+        ]);
+        expect(polledRun).toEqual(
+          expect.objectContaining({
+            id: createdRun.id,
+            playlistTitle: "Warehouse Starters",
+            sourceType: "spotify",
+            status: "queued",
+            trackCount: 2
+          })
+        );
+        expect(runStoreModule.getRunStore().listRuns()).toHaveLength(1);
+      } finally {
+        fetchSpy.mockRestore();
+
+        if (originalClientId === undefined) {
+          delete process.env.SPOTIFY_CLIENT_ID;
+        } else {
+          process.env.SPOTIFY_CLIENT_ID = originalClientId;
+        }
+
+        if (originalClientSecret === undefined) {
+          delete process.env.SPOTIFY_CLIENT_SECRET;
+        } else {
+          process.env.SPOTIFY_CLIENT_SECRET = originalClientSecret;
+        }
+
+        if (originalMarket === undefined) {
+          delete process.env.SPOTIFY_MARKET;
+        } else {
+          process.env.SPOTIFY_MARKET = originalMarket;
+        }
+      }
+    });
+  });
+
+  it("returns explicit validation errors for unsupported Spotify URLs", async () => {
+    await withTempDatabase(async () => {
+      vi.resetModules();
+
+      const { POST } = await import("./route");
+
+      const response = await POST(
         new Request("http://localhost/api/runs", {
           body: JSON.stringify({
-            playlistUrl:
-              "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9"
+            playlistUrl: "https://open.spotify.com/album/37i9dQZF1DWVRSukIED0e9"
           }),
           headers: {
             "content-type": "application/json"
@@ -47,30 +224,65 @@ describe("/api/runs", () => {
         })
       );
 
-      expect(createResponse.status).toBe(201);
-      expect(existsSync(databasePath)).toBe(true);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Spotify URL must point to a playlist (for example /playlist/<playlist-id>)."
+      });
+    });
+  });
 
-      const createdRun = (await createResponse.json()) as { id: string };
-      const pollResponse = await GET(
-        new Request(`http://localhost/api/runs/${createdRun.id}`),
-        {
-          params: Promise.resolve({ runId: createdRun.id })
+  it("returns explicit setup errors when Spotify credentials are missing", async () => {
+    await withTempDatabase(async () => {
+      vi.resetModules();
+
+      const originalClientId = process.env.SPOTIFY_CLIENT_ID;
+      const originalClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+      const originalMarket = process.env.SPOTIFY_MARKET;
+
+      delete process.env.SPOTIFY_CLIENT_ID;
+      delete process.env.SPOTIFY_CLIENT_SECRET;
+      delete process.env.SPOTIFY_MARKET;
+
+      try {
+        const { POST } = await import("./route");
+
+        const response = await POST(
+          new Request("http://localhost/api/runs", {
+            body: JSON.stringify({
+              playlistUrl:
+                "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9"
+            }),
+            headers: {
+              "content-type": "application/json"
+            },
+            method: "POST"
+          })
+        );
+
+        expect(response.status).toBe(500);
+        await expect(response.json()).resolves.toEqual({
+          error: "Spotify ingestion requires SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET."
+        });
+      } finally {
+        if (originalClientId === undefined) {
+          delete process.env.SPOTIFY_CLIENT_ID;
+        } else {
+          process.env.SPOTIFY_CLIENT_ID = originalClientId;
         }
-      );
-      const polledRun = (await pollResponse.json()) as {
-        id: string;
-        sourceType: string;
-        status: string;
-      };
 
-      expect(polledRun).toEqual(
-        expect.objectContaining({
-          id: createdRun.id,
-          sourceType: "spotify",
-          status: "queued"
-        })
-      );
-      expect(runStoreModule.getRunStore().listRuns()).toHaveLength(1);
+        if (originalClientSecret === undefined) {
+          delete process.env.SPOTIFY_CLIENT_SECRET;
+        } else {
+          process.env.SPOTIFY_CLIENT_SECRET = originalClientSecret;
+        }
+
+        if (originalMarket === undefined) {
+          delete process.env.SPOTIFY_MARKET;
+        } else {
+          process.env.SPOTIFY_MARKET = originalMarket;
+        }
+      }
     });
   });
 

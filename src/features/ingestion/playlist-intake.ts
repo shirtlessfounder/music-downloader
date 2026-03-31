@@ -2,9 +2,11 @@ import { getRunStore, type RunDetail, type RunStore } from "@/features/runs/run-
 
 import { PlaylistIntakeError } from "./playlist-intake-error";
 import { fetchSoundCloudPlaylistSnapshot } from "./soundcloud-playlist";
+import { fetchSpotifyPlaylistSnapshot } from "./spotify-playlist";
 
 type PlaylistIntakeDependencies = {
   fetchSoundCloudPlaylistSnapshot?: typeof fetchSoundCloudPlaylistSnapshot;
+  fetchSpotifyPlaylistSnapshot?: typeof fetchSpotifyPlaylistSnapshot;
   runStore?: Pick<RunStore, "createRun" | "getRun" | "replaceRunTracks">;
 };
 
@@ -40,19 +42,20 @@ export async function createRunFromPlaylistUrl(
   }
 
   const runStore = dependencies.runStore ?? getRunStore();
-
-  if (sourceType === "spotify") {
-    return runStore.createRun({ playlistUrl, sourceType });
-  }
-
-  const snapshot = await (
-    dependencies.fetchSoundCloudPlaylistSnapshot ??
-    fetchSoundCloudPlaylistSnapshot
-  )(playlistUrl);
+  const snapshot =
+    sourceType === "spotify"
+      ? await (
+          dependencies.fetchSpotifyPlaylistSnapshot ??
+          fetchSpotifyPlaylistSnapshot
+        )(playlistUrl)
+      : await (
+          dependencies.fetchSoundCloudPlaylistSnapshot ??
+          fetchSoundCloudPlaylistSnapshot
+        )(playlistUrl);
   const run = runStore.createRun({
     playlistTitle: snapshot.playlistTitle,
     playlistUrl: snapshot.playlistUrl,
-    sourceType: "soundcloud"
+    sourceType
   });
 
   runStore.replaceRunTracks(run.id, snapshot.tracks);
@@ -60,7 +63,7 @@ export async function createRunFromPlaylistUrl(
   const hydratedRun = runStore.getRun(run.id);
 
   if (!hydratedRun) {
-    throw new Error(`Run not found after SoundCloud ingestion: ${run.id}`);
+    throw new Error(`Run not found after ${sourceType} ingestion: ${run.id}`);
   }
 
   return hydratedRun;
