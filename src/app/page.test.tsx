@@ -22,6 +22,14 @@ async function withTempDatabase(callback: (databasePath: string) => Promise<void
 }
 
 describe("HomePage", () => {
+  it("forces live home-page rendering against the SQLite run store", async () => {
+    vi.resetModules();
+
+    const pageModule = await import("./page");
+
+    expect(pageModule.dynamic).toBe("force-dynamic");
+  });
+
   it("renders real recent runs from SQLite-backed data", async () => {
     await withTempDatabase(async () => {
       vi.resetModules();
