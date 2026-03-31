@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { buildMissedArtifactSourceNote } from "@/features/artifacts/run-track-artifact-source-note";
 import type {
   ProviderArtifactFormat,
   ProviderAuthorizationBasis,
@@ -525,6 +526,50 @@ export function createRunStore(options: RunStoreOptions = {}) {
       .run(nextStatus, null, now, null, null, runId);
   }
 
+  function insertAcquisitionAttemptDirect(input: {
+    note?: string | null;
+    now: string;
+    outcome: AcquisitionAttemptOutcome;
+    providerKey: string;
+    runTrackId: string;
+  }) {
+    database
+      .prepare(
+        `
+          INSERT INTO acquisition_attempts (
+            id,
+            run_track_id,
+            provider_key,
+            outcome,
+            note,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `
+      )
+      .run(
+        crypto.randomUUID(),
+        input.runTrackId,
+        input.providerKey,
+        input.outcome,
+        input.note ?? null,
+        input.now
+      );
+  }
+
+  function buildRejectedReviewMissNote(review: RunTrackReviewRow) {
+    return JSON.stringify(
+      buildMissedArtifactSourceNote({
+        miss: {
+          detail: `Rejected during ${review.provider_name} paid review.`,
+          providerId: review.provider_key,
+          providerName: review.provider_name,
+          reason: "paid-review-rejected"
+        }
+      })
+    );
+  }
+
   function syncRunStatusForReviewQueue(runId: string, now: string) {
     const currentRun = getRunOrThrow(runId);
     const unresolvedReviews = database
@@ -535,7 +580,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
           INNER JOIN run_tracks
             ON run_tracks.id = run_track_reviews.run_track_id
           WHERE run_tracks.run_id = ?
-            AND run_track_reviews.status IN ('queued', 'approved')
+            AND run_track_reviews.status IN ('queued', 'approved', 'purchased')
         `
       )
       .get(runId) as { count: number };
@@ -1073,11 +1118,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
 
       const now = getTimestamp();
       const nextTrackStatus =
-        nextStatus === "purchased"
-          ? "acquired"
-          : nextStatus === "rejected"
-            ? "missed"
-            : "awaiting-approval";
+        nextStatus === "rejected" ? "missed" : "awaiting-approval";
 
       database.exec("BEGIN");
 
@@ -1102,6 +1143,15 @@ export function createRunStore(options: RunStoreOptions = {}) {
             `
           )
           .run(nextTrackStatus, now, track.id);
+        if (nextStatus === "rejected") {
+          insertAcquisitionAttemptDirect({
+            note: buildRejectedReviewMissNote(review),
+            now,
+            outcome: "missed",
+            providerKey: review.provider_key,
+            runTrackId: track.id
+          });
+        }
         database
           .prepare("UPDATE runs SET updated_at = ? WHERE id = ?")
           .run(now, track.run_id);

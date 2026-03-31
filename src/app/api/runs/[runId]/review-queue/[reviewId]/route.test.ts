@@ -154,7 +154,7 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
       expect(store.getRun(run.id)).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "packaging"
+          status: "awaiting-approval"
         })
       );
       expect(
@@ -164,6 +164,14 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
       ).toEqual([
         ["beatport-route-1", "purchased"],
         ["beatport-route-2", "rejected"]
+      ]);
+      expect(
+        store
+          .getRun(run.id)
+          ?.tracks.map((track) => [track.sourcePosition, track.status])
+      ).toEqual([
+        [1, "awaiting-approval"],
+        [2, "missed"]
       ]);
     });
   });

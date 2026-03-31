@@ -1,12 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type {
-  ProviderArtifactFormat,
-  ProviderAuthorizationBasis,
-  ProviderPriceTier,
-  ProviderProvenance
-} from "@/features/providers/provider-registry";
+import type { ProviderArtifactFormat } from "@/features/providers/provider-registry";
 import {
   getRunStore,
   type ArtifactKind,
@@ -15,14 +10,28 @@ import {
   type RunStore,
   type RunTrack
 } from "@/features/runs/run-store";
-import type {
-  TrackAcceptedDecision,
-  TrackAudioFormat,
-  TrackMissReason
-} from "@/features/tracks/canonical-track";
-
-export const RUN_TRACK_ARTIFACT_SOURCE_NOTE_SCHEMA =
-  "run-track-artifact-source.v1";
+import type { TrackAcceptedDecision, TrackAudioFormat } from "@/features/tracks/canonical-track";
+import {
+  parseRunTrackArtifactSourceNote,
+  type RunTrackArtifactSourceArtifact,
+  type RunTrackArtifactSourceMiss,
+  type RunTrackArtifactSourceNote
+} from "./run-track-artifact-source-note";
+export {
+  buildAcquiredArtifactSourceNote,
+  buildMissedArtifactSourceNote,
+  parseRunTrackArtifactSourceNote,
+  RUN_TRACK_ARTIFACT_SOURCE_NOTE_SCHEMA
+} from "./run-track-artifact-source-note";
+export type {
+  AcquiredArtifactSourceNote,
+  MissedArtifactSourceNote,
+  RunTrackArtifactSourceArtifact,
+  RunTrackArtifactSourceMiss,
+  RunTrackArtifactSourceNote,
+  RunTrackArtifactSourceProvider,
+  RunTrackArtifactSourceSelection
+} from "./run-track-artifact-source-note";
 
 const RUN_ARTIFACT_KIND_ORDER: ArtifactKind[] = [
   "downloads-zip",
@@ -30,62 +39,6 @@ const RUN_ARTIFACT_KIND_ORDER: ArtifactKind[] = [
   "manifest-json",
   "run-report"
 ];
-
-type ArtifactSourceNoteSchema =
-  typeof RUN_TRACK_ARTIFACT_SOURCE_NOTE_SCHEMA;
-
-type ArtifactSourceProviderDiscovery = ProviderProvenance["discoveredVia"];
-
-export type RunTrackArtifactSourceProvider = {
-  authorizationBasis: ProviderAuthorizationBasis;
-  candidateId?: string | null;
-  discoveredVia?: ArtifactSourceProviderDiscovery;
-  priceTier: ProviderPriceTier;
-  providerId: string;
-  providerName: string;
-  providerUrl?: string | null;
-};
-
-export type RunTrackArtifactSourceSelection = {
-  details: string;
-  reason: TrackAcceptedDecision["reason"];
-  selectedFormat: TrackAudioFormat | null;
-};
-
-export type RunTrackArtifactSourceArtifact = {
-  contentType?: string | null;
-  fileExtension: string | null;
-  fileName: string;
-  format: ProviderArtifactFormat;
-  localFilePath: string;
-  sha256?: string | null;
-  sizeBytes: number | null;
-};
-
-export type RunTrackArtifactSourceMiss = {
-  detail: string;
-  providerId?: string | null;
-  providerName?: string | null;
-  reason: TrackMissReason | string;
-};
-
-export type AcquiredArtifactSourceNote = {
-  artifact: RunTrackArtifactSourceArtifact;
-  outcome: "acquired";
-  provider: RunTrackArtifactSourceProvider;
-  schema: ArtifactSourceNoteSchema;
-  selection: RunTrackArtifactSourceSelection;
-};
-
-export type MissedArtifactSourceNote = {
-  miss: RunTrackArtifactSourceMiss;
-  outcome: "missed";
-  schema: ArtifactSourceNoteSchema;
-};
-
-export type RunTrackArtifactSourceNote =
-  | AcquiredArtifactSourceNote
-  | MissedArtifactSourceNote;
 
 export type GeneratedRunArtifact = {
   absolutePath: string;
@@ -172,30 +125,6 @@ export class RunArtifactNotFoundError extends Error {
     this.artifactKind = artifactKind;
     this.runId = runId;
   }
-}
-
-export function buildAcquiredArtifactSourceNote(input: {
-  artifact: RunTrackArtifactSourceArtifact;
-  provider: RunTrackArtifactSourceProvider;
-  selection: RunTrackArtifactSourceSelection;
-}): AcquiredArtifactSourceNote {
-  return {
-    artifact: input.artifact,
-    outcome: "acquired",
-    provider: input.provider,
-    schema: RUN_TRACK_ARTIFACT_SOURCE_NOTE_SCHEMA,
-    selection: input.selection
-  };
-}
-
-export function buildMissedArtifactSourceNote(input: {
-  miss: RunTrackArtifactSourceMiss;
-}): MissedArtifactSourceNote {
-  return {
-    miss: input.miss,
-    outcome: "missed",
-    schema: RUN_TRACK_ARTIFACT_SOURCE_NOTE_SCHEMA
-  };
 }
 
 export function buildRunArtifactDownloadUrl(runId: string, kind: ArtifactKind) {
@@ -426,27 +355,6 @@ function getLatestArtifactSourceNotesByTrackId(
   }
 
   return notesByTrackId;
-}
-
-export function parseRunTrackArtifactSourceNote(note: string | null) {
-  if (!note) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(note) as Record<string, unknown>;
-
-    if (
-      parsed.schema !== RUN_TRACK_ARTIFACT_SOURCE_NOTE_SCHEMA ||
-      (parsed.outcome !== "acquired" && parsed.outcome !== "missed")
-    ) {
-      return null;
-    }
-
-    return parsed as RunTrackArtifactSourceNote;
-  } catch {
-    return null;
-  }
 }
 
 function buildZipEntryName(

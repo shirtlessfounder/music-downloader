@@ -232,7 +232,7 @@ describe("RunReportPage", () => {
         0
       );
       expect(
-        screen.getAllByText(/marked purchased \/ completed/i).length
+        screen.getAllByText(/purchased, awaiting import before packaging/i).length
       ).toBeGreaterThan(0);
       expect(
         screen.getByRole("button", {

@@ -27,7 +27,7 @@ describe("RunReportScreen Beatport review lane", () => {
       0
     );
     expect(
-      screen.getAllByText(/marked purchased \/ completed/i).length
+      screen.getAllByText(/purchased, awaiting import before packaging/i).length
     ).toBeGreaterThan(0);
     expect(
       screen.getByRole("button", {
@@ -184,7 +184,7 @@ function buildBeatportReviewReport() {
         },
         sourcePosition: 2,
         sourceTrackId: "sp-102",
-        status: "acquired",
+        status: "awaiting-approval",
         title: "Drugs From Amsterdam",
         version: null
       }

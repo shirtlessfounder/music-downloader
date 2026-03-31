@@ -255,7 +255,7 @@ describe("createRunStore", () => {
     }
   });
 
-  it("updates review queue, track outcomes, and run lifecycle for approve reject and purchased actions", () => {
+  it("updates review queue while keeping purchased tracks out of packaging until import", () => {
     const tempDatabase = createTempDatabasePath();
 
     try {
@@ -328,7 +328,7 @@ describe("createRunStore", () => {
       expect(persistedRun).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "packaging"
+          status: "awaiting-approval"
         })
       );
       expect(
@@ -343,7 +343,7 @@ describe("createRunStore", () => {
             [track.sourcePosition, track.status] satisfies [number, RunTrackStatus]
         )
       ).toEqual([
-        [1, "acquired"],
+        [1, "awaiting-approval"],
         [2, "missed"]
       ]);
     } finally {

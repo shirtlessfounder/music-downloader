@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
+import { parseRunTrackArtifactSourceNote } from "@/features/artifacts/run-artifacts";
+
 import { createRunStore, type RunTrackStatus } from "./run-store";
 
 function createTempDatabasePath() {
@@ -114,7 +116,7 @@ describe("createRunStore Beatport review queue", () => {
     }
   });
 
-  it("persists approve reject and purchased review transitions", () => {
+  it("keeps purchased reviews awaiting import and persists rejected reviews as misses", () => {
     const tempDatabase = createTempDatabasePath();
 
     try {
@@ -180,6 +182,7 @@ describe("createRunStore Beatport review queue", () => {
         "purchased"
       );
       const persistedRun = store.getRun(run.id);
+      const attempts = store.listRunTrackAttempts(run.id);
 
       expect(approvedResult.status).toBe("approved");
       expect(rejectedResult.status).toBe("rejected");
@@ -187,7 +190,7 @@ describe("createRunStore Beatport review queue", () => {
       expect(persistedRun).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "packaging"
+          status: "awaiting-approval"
         })
       );
       expect(
@@ -195,6 +198,33 @@ describe("createRunStore Beatport review queue", () => {
       ).toEqual([
         ["beatport-2001", "purchased"],
         ["beatport-2002", "rejected"]
+      ]);
+      expect(attempts).toEqual([
+        expect.objectContaining({
+          outcome: "missed",
+          providerKey: "beatport",
+          runTrackId: tracks[1].id
+        })
+      ]);
+      expect(parseRunTrackArtifactSourceNote(attempts[0]?.note ?? null)).toEqual(
+        expect.objectContaining({
+          miss: expect.objectContaining({
+            detail: "Rejected during Beatport paid review.",
+            providerId: "beatport",
+            providerName: "Beatport",
+            reason: "paid-review-rejected"
+          }),
+          outcome: "missed"
+        })
+      );
+      expect(
+        persistedRun?.tracks.map(
+          (track) =>
+            [track.sourcePosition, track.status] satisfies [number, RunTrackStatus]
+        )
+      ).toEqual([
+        [1, "awaiting-approval"],
+        [2, "missed"]
       ]);
     } finally {
       tempDatabase.cleanup();
