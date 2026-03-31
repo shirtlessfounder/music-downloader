@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "npm run test:registry && npm run test:unit",
+    "test:registry": "node --test tests/authorized-source-research-registry.test.mjs",
+    "test:unit": "vitest run",
     "test:e2e": "playwright test"
   },
   "dependencies": {
