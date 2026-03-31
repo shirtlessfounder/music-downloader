@@ -1,0 +1,287 @@
+/* @vitest-environment node */
+
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
+
+import { createRunStore } from "@/features/runs/run-store";
+
+import {
+  buildAcquiredArtifactSourceNote,
+  buildMissedArtifactSourceNote,
+  generateRunArtifacts
+} from "./run-artifacts";
+
+function createTempWorkspace() {
+  const workspaceRoot = mkdtempSync(
+    path.join(tmpdir(), "music-downloader-run-artifacts-")
+  );
+
+  return {
+    databasePath: path.join(workspaceRoot, "data", "music-downloader.sqlite"),
+    cleanup() {
+      rmSync(workspaceRoot, { force: true, recursive: true });
+    },
+    workspaceRoot
+  };
+}
+
+function createSha256(buffer: Buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+function readStoredZipEntries(zipFilePath: string) {
+  const bytes = readFileSync(zipFilePath);
+  const entries = new Map<string, Buffer>();
+  let offset = 0;
+
+  while (offset + 4 <= bytes.length) {
+    const signature = bytes.readUInt32LE(offset);
+
+    if (signature === 0x02014b50 || signature === 0x06054b50) {
+      break;
+    }
+
+    if (signature !== 0x04034b50) {
+      throw new Error(`Unexpected ZIP signature ${signature.toString(16)} at ${offset}`);
+    }
+
+    const compressionMethod = bytes.readUInt16LE(offset + 8);
+    const compressedSize = bytes.readUInt32LE(offset + 18);
+    const fileNameLength = bytes.readUInt16LE(offset + 26);
+    const extraFieldLength = bytes.readUInt16LE(offset + 28);
+    const fileName = bytes
+      .subarray(offset + 30, offset + 30 + fileNameLength)
+      .toString("utf8");
+    const fileDataStart = offset + 30 + fileNameLength + extraFieldLength;
+    const fileDataEnd = fileDataStart + compressedSize;
+
+    if (compressionMethod !== 0) {
+      throw new Error(`Expected stored ZIP entry for ${fileName}.`);
+    }
+
+    entries.set(fileName, bytes.subarray(fileDataStart, fileDataEnd));
+    offset = fileDataEnd;
+  }
+
+  return entries;
+}
+
+describe("generateRunArtifacts", () => {
+  it("packages acquired downloads, misses, and manifest metadata from persisted run data", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const store = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+    try {
+      const run = store.createRun({
+        playlistTitle: "Warehouse Drivers",
+        playlistUrl: "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
+        sourceType: "spotify"
+      });
+      const tracks = store.replaceRunTracks(run.id, [
+        {
+          artist: "DJ Sealer",
+          sourcePosition: 1,
+          title: "Warehouse Tool",
+          version: "Extended Mix"
+        },
+        {
+          artist: "Lane 8",
+          sourcePosition: 2,
+          title: "Little Voices"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+      store.transitionRunStatus(run.id, "packaging");
+
+      const downloadDirectory = path.join(tempWorkspace.workspaceRoot, "downloads");
+      const acquiredFilePath = path.join(downloadDirectory, "warehouse-tool-source.mp3");
+      const acquiredFileBody = Buffer.from("fixture mp3 payload\n", "utf8");
+
+      mkdirSync(downloadDirectory, { recursive: true });
+      writeFileSync(acquiredFilePath, acquiredFileBody);
+
+      store.updateRunTrackStatus(tracks[0].id, "acquired");
+      store.recordAcquisitionAttempt({
+        note: JSON.stringify(
+          buildAcquiredArtifactSourceNote({
+            artifact: {
+              contentType: "audio/mpeg",
+              fileExtension: "mp3",
+              fileName: "warehouse-tool-source.mp3",
+              format: "mp3",
+              localFilePath: acquiredFilePath,
+              sha256: createSha256(acquiredFileBody),
+              sizeBytes: acquiredFileBody.length
+            },
+            provider: {
+              authorizationBasis: "uploader-enabled-download",
+              candidateId: "sc-track-111",
+              discoveredVia: "search",
+              priceTier: "free",
+              providerId: "soundcloud-direct-downloads",
+              providerName: "SoundCloud Direct Downloads",
+              providerUrl:
+                "https://soundcloud.com/dj-sealer/warehouse-tool-extended-mix"
+            },
+            selection: {
+              details: "Extended Mix matched the highest-priority mix preference.",
+              reason: "accepted-extended-mix",
+              selectedFormat: "mp3"
+            }
+          })
+        ),
+        outcome: "matched",
+        providerKey: "soundcloud-direct-downloads",
+        runTrackId: tracks[0].id
+      });
+
+      store.updateRunTrackStatus(tracks[1].id, "missed");
+      store.recordAcquisitionAttempt({
+        note: JSON.stringify(
+          buildMissedArtifactSourceNote({
+            miss: {
+              detail: "No authorized source matched the requested track.",
+              reason: "no-authorized-source-match"
+            }
+          })
+        ),
+        outcome: "missed",
+        providerKey: "track-matcher",
+        runTrackId: tracks[1].id
+      });
+
+      const generated = await generateRunArtifacts({
+        runId: run.id,
+        runStore: store,
+        workspaceRoot: tempWorkspace.workspaceRoot
+      });
+      const regenerated = await generateRunArtifacts({
+        runId: run.id,
+        runStore: store,
+        workspaceRoot: tempWorkspace.workspaceRoot
+      });
+
+      expect(generated.artifacts.map((artifact) => artifact.kind)).toEqual([
+        "downloads-zip",
+        "misses-txt",
+        "manifest-json"
+      ]);
+      expect(generated.artifacts.map((artifact) => artifact.relativePath)).toEqual([
+        `data/runs/${run.id}/artifacts/downloads.zip`,
+        `data/runs/${run.id}/artifacts/misses.txt`,
+        `data/runs/${run.id}/artifacts/manifest.json`
+      ]);
+      expect(regenerated.artifacts.map((artifact) => artifact.relativePath)).toEqual(
+        generated.artifacts.map((artifact) => artifact.relativePath)
+      );
+      expect(store.getRun(run.id)?.artifacts).toHaveLength(3);
+
+      const downloadsZipPath = generated.artifacts.find(
+        (artifact) => artifact.kind === "downloads-zip"
+      )?.absolutePath;
+      const manifestPath = generated.artifacts.find(
+        (artifact) => artifact.kind === "manifest-json"
+      )?.absolutePath;
+      const missesPath = generated.artifacts.find(
+        (artifact) => artifact.kind === "misses-txt"
+      )?.absolutePath;
+
+      expect(downloadsZipPath).toBeDefined();
+      expect(manifestPath).toBeDefined();
+      expect(missesPath).toBeDefined();
+
+      const zipEntries = readStoredZipEntries(downloadsZipPath as string);
+      const manifest = JSON.parse(readFileSync(manifestPath as string, "utf8")) as {
+        run: {
+          id: string;
+          playlistTitle: string | null;
+          sourceType: string;
+        };
+        summary: {
+          acquiredCount: number;
+          missCount: number;
+          trackCount: number;
+        };
+        tracks: Array<{
+          artist: string;
+          miss?: {
+            detail: string;
+            reason: string;
+          } | null;
+          outcome: string;
+          selection?: {
+            artifactFormat: string;
+            providerId: string;
+            zipEntryName: string;
+          } | null;
+          sourcePosition: number;
+          title: string;
+          version: string | null;
+        }>;
+      };
+      const missesText = readFileSync(missesPath as string, "utf8");
+
+      expect([...zipEntries.keys()]).toEqual([
+        "001 - DJ Sealer - Warehouse Tool (Extended Mix).mp3"
+      ]);
+      expect(
+        zipEntries.get("001 - DJ Sealer - Warehouse Tool (Extended Mix).mp3")?.toString(
+          "utf8"
+        )
+      ).toBe(acquiredFileBody.toString("utf8"));
+      expect(missesText).toBe(
+        "002 - Lane 8 - Little Voices :: no-authorized-source-match :: No authorized source matched the requested track.\n"
+      );
+      expect(manifest).toMatchObject({
+        run: {
+          id: run.id,
+          playlistTitle: "Warehouse Drivers",
+          sourceType: "spotify"
+        },
+        summary: {
+          acquiredCount: 1,
+          missCount: 1,
+          trackCount: 2
+        },
+        tracks: [
+          {
+            artist: "DJ Sealer",
+            outcome: "acquired",
+            selection: {
+              artifactFormat: "mp3",
+              providerId: "soundcloud-direct-downloads",
+              zipEntryName: "001 - DJ Sealer - Warehouse Tool (Extended Mix).mp3"
+            },
+            sourcePosition: 1,
+            title: "Warehouse Tool",
+            version: "Extended Mix"
+          },
+          {
+            artist: "Lane 8",
+            miss: {
+              detail: "No authorized source matched the requested track.",
+              reason: "no-authorized-source-match"
+            },
+            outcome: "missed",
+            sourcePosition: 2,
+            title: "Little Voices",
+            version: null
+          }
+        ]
+      });
+    } finally {
+      store.close();
+      tempWorkspace.cleanup();
+    }
+  });
+});
