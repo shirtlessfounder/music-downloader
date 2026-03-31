@@ -123,6 +123,16 @@ describe("extractMixMetadata", () => {
       selectionClass: "reject"
     });
   });
+
+  it("keeps explicit non-approved trailing labels rejected after promotional tags are removed", () => {
+    expect(extractMixMetadata("Consciousness (Live) [Free Download]")).toMatchObject({
+      cleanTitle: "Consciousness",
+      displayLabel: "Live",
+      normalizedLabel: "live",
+      kind: "variant",
+      selectionClass: "reject"
+    });
+  });
 });
 
 describe("parseDurationSeconds", () => {
@@ -169,6 +179,24 @@ describe("evaluateTrackCandidate", () => {
       reason: "mix-version-not-eligible",
       selectedFormat: "mp3",
       details: "Radio Edit is outside the approved mix preference order."
+    });
+  });
+
+  it("does not treat explicit labeled variants as eligible base fallbacks", () => {
+    const decision = evaluateTrackCandidate(
+      canonicalizeTrack({
+        source: "soundcloud",
+        title: "Tinlicker - Fractal (Live)",
+        duration: 301,
+        availableFormats: ["mp3", "wav"]
+      })
+    );
+
+    expect(decision).toEqual({
+      outcome: "rejected",
+      reason: "mix-version-not-eligible",
+      selectedFormat: "mp3",
+      details: "Live is outside the approved mix preference order."
     });
   });
 });
