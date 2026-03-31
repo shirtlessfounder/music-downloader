@@ -61,6 +61,7 @@ interface ParsedDownloadOption {
   fileName: string | null;
   formatKey: string | null;
   label: string | null;
+  reacquireSelector: string | null;
 }
 
 interface ParsedReleaseSnapshot {
@@ -284,13 +285,9 @@ async function acquireBandcampDownload(input: {
     const download = await sessionResult.captureDownload({
       trigger: async (page) => {
         const locator =
-          preferredDownload.option.formatKey === null
+          preferredDownload.option.reacquireSelector === null
             ? page.locator(DOWNLOAD_LINK_SELECTOR).first()
-            : page
-                .locator(
-                  `[data-testid="bandcamp-download-link"][data-format-key="${preferredDownload.option.formatKey}"]`
-                )
-                .first();
+            : page.locator(preferredDownload.option.reacquireSelector).first();
 
         await locator.click();
       }
@@ -429,7 +426,8 @@ async function parseReleaseSnapshot(page: Page): Promise<ParsedReleaseSnapshot> 
           contentType: element.getAttribute("type"),
           fileName: readAuthorizedDownloadFileName(element),
           formatKey: element.getAttribute("data-format-key")?.trim() || null,
-          label: element.textContent?.trim() || null
+          label: element.textContent?.trim() || null,
+          reacquireSelector: buildAuthorizedDownloadSelector(element)
         };
       })
       .filter((option): option is NonNullable<typeof option> => option !== null);
@@ -533,6 +531,30 @@ async function parseReleaseSnapshot(page: Page): Promise<ParsedReleaseSnapshot> 
       } catch {
         return null;
       }
+    }
+
+    function buildAuthorizedDownloadSelector(anchor: HTMLAnchorElement) {
+      const selectorParts = ["a"];
+      const explicitFileName = anchor.getAttribute("download");
+      const formatKey = anchor.getAttribute("data-format-key")?.trim();
+      const href = anchor.getAttribute("href")?.trim();
+
+      if (explicitFileName !== null) {
+        const trimmedFileName = explicitFileName.trim();
+        selectorParts.push(
+          trimmedFileName ? `[download="${CSS.escape(trimmedFileName)}"]` : "[download]"
+        );
+      }
+
+      if (formatKey) {
+        selectorParts.push(`[data-format-key="${CSS.escape(formatKey)}"]`);
+      }
+
+      if (href) {
+        selectorParts.push(`[href="${CSS.escape(href)}"]`);
+      }
+
+      return selectorParts.length > 1 ? selectorParts.join("") : null;
     }
 
     function readMetaValue(name: string) {

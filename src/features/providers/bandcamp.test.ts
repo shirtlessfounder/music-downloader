@@ -244,6 +244,98 @@ describe("createBandcampProvider", () => {
     15_000
   );
 
+  it(
+    "acquires the preferred entitled download when Bandcamp omits fixture-only download selectors",
+    async () => {
+      const workspaceRoot = await mkdtemp(
+        path.join(os.tmpdir(), "music-downloader-bandcamp-provider-production-selectors-")
+      );
+      const fixtureServer = await startBandcampFixtureServer({
+        releases: [
+          {
+            artistName: "DJ Sealer",
+            downloadOptions: [
+              {
+                body: "mp3 v0 fixture payload\n",
+                contentType: "audio/mpeg",
+                fileName: "warehouse-tool--v0.mp3",
+                formatKey: "mp3-v0",
+                label: "MP3 V0"
+              },
+              {
+                body: "mp3 320 fixture payload\n",
+                contentType: "audio/mpeg",
+                fileName: "warehouse-tool--320.mp3",
+                formatKey: "mp3-320",
+                label: "MP3 320"
+              },
+              {
+                body: "wav fixture payload\n",
+                contentType: "audio/wav",
+                fileName: "warehouse-tool.wav",
+                formatKey: "wav",
+                label: "WAV"
+              }
+            ],
+            durationSeconds: 392,
+            entitlement: "owned",
+            includeDownloadTestId: false,
+            path: "/album/warehouse-tool-production-selectors",
+            title: "Warehouse Tool (Extended Mix)",
+            trackId: "bandcamp-track-112"
+          }
+        ],
+        searchResults: ["/album/warehouse-tool-production-selectors"]
+      });
+      const browserSessionService = new BrowserSessionService({ workspaceRoot });
+      const provider = createBandcampProvider({
+        baseUrl: fixtureServer.origin,
+        browserSessionService
+      });
+
+      try {
+        await seedAuthenticatedSession(browserSessionService);
+        const track = canonicalizeTrack({
+          artistName: "DJ Sealer",
+          source: "spotify",
+          title: "Warehouse Tool (Extended Mix)"
+        });
+        const searchResult = await provider.search({ track });
+
+        expect(searchResult.outcome).toBe("candidates");
+
+        if (searchResult.outcome !== "candidates") {
+          throw new Error("Expected Bandcamp search to produce a candidate.");
+        }
+
+        await expect(
+          provider.acquire({
+            candidate: searchResult.candidates[0],
+            track
+          })
+        ).resolves.toEqual({
+          outcome: "acquired",
+          candidate: searchResult.candidates[0],
+          artifact: {
+            contentType: "audio/mpeg",
+            fileExtension: "mp3",
+            fileName: "warehouse-tool--320.mp3",
+            format: "mp3",
+            sha256: createHash("sha256")
+              .update("mp3 320 fixture payload\n")
+              .digest("hex"),
+            sizeBytes: Buffer.byteLength("mp3 320 fixture payload\n")
+          }
+        });
+      } finally {
+        await browserSessionService.shutdown();
+        await fixtureServer.close();
+        await rm(workspaceRoot, { force: true, recursive: true });
+      }
+    },
+    15_000
+  );
+
   it("returns a structured miss when the matching release still requires payment", async () => {
     const workspaceRoot = await mkdtemp(
       path.join(os.tmpdir(), "music-downloader-bandcamp-provider-paid-")
@@ -474,6 +566,7 @@ type ReleaseFixture = {
   downloadOptions: DownloadOptionFixture[];
   durationSeconds: number;
   entitlement: ReleaseEntitlement;
+  includeDownloadTestId?: boolean;
   path: string;
   title: string;
   trackId: string;
@@ -572,7 +665,11 @@ function handleFixtureRequest(
         ? releaseFixture.downloadOptions
             .map(
               (downloadOption) =>
-                `<a data-testid="bandcamp-download-link" data-entitlement="${releaseFixture.entitlement}" data-format-key="${escapeHtml(downloadOption.formatKey)}" href="/downloads/${releaseFixture.trackId}/${escapeHtml(downloadOption.fileName)}" download="${escapeHtml(downloadOption.fileName)}" type="${escapeHtml(downloadOption.contentType)}">${escapeHtml(downloadOption.label)}</a>`
+                `<a${
+                  releaseFixture.includeDownloadTestId === false
+                    ? ""
+                    : ' data-testid="bandcamp-download-link"'
+                } data-entitlement="${releaseFixture.entitlement}" data-format-key="${escapeHtml(downloadOption.formatKey)}" href="/downloads/${releaseFixture.trackId}/${escapeHtml(downloadOption.fileName)}" download="${escapeHtml(downloadOption.fileName)}" type="${escapeHtml(downloadOption.contentType)}">${escapeHtml(downloadOption.label)}</a>`
             )
             .join("\n")
         : `<p data-testid="bandcamp-paid-message">Paid checkout required for this release.</p>`;
