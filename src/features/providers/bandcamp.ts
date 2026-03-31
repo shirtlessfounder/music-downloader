@@ -1004,6 +1004,7 @@ async function buildArtifactMetadata(
     fileExtension,
     fileName: suggestedFilename,
     format: inferArtifactFormat(fileExtension, normalizedContentType),
+    localFilePath: downloadPath,
     sha256: createHash("sha256").update(fileBuffer).digest("hex"),
     sizeBytes: fileStats.size
   };

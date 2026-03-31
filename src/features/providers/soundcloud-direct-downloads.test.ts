@@ -499,6 +499,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
             fileExtension: "flac",
             fileName: "warehouse-tool.flac",
             format: "flac",
+            localFilePath: expect.stringContaining("warehouse-tool.flac"),
             sha256:
               "93d31421dcf5b0f8fc767062a4ed9241b3fe0b3774ea70589e95128a7b56b703",
             sizeBytes: 25

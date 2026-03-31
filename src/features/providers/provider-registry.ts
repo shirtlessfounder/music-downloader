@@ -94,6 +94,7 @@ export interface ProviderArtifactMetadata {
   fileExtension: string | null;
   fileName: string;
   format: ProviderArtifactFormat;
+  localFilePath: string;
   sha256?: string | null;
   sizeBytes: number | null;
 }
