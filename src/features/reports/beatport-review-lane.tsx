@@ -169,7 +169,7 @@ function formatReviewPrimaryCopy(review: RunReportReviewQueueEntry) {
     case "approved":
       return "Approved for manual purchase";
     case "purchased":
-      return "Marked purchased / completed";
+      return "Purchased, awaiting import before packaging";
     case "rejected":
       return "Rejected during paid review";
     default:

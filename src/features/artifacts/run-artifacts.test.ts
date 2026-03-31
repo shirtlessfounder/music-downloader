@@ -16,7 +16,8 @@ import { createRunStore } from "@/features/runs/run-store";
 import {
   buildAcquiredArtifactSourceNote,
   buildMissedArtifactSourceNote,
-  generateRunArtifacts
+  generateRunArtifacts,
+  RunArtifactsNotReadyError
 } from "./run-artifacts";
 
 function createTempWorkspace() {
@@ -75,6 +76,152 @@ function readStoredZipEntries(zipFilePath: string) {
 }
 
 describe("generateRunArtifacts", () => {
+  it("packages rejected Beatport reviews once the rejection persists a miss note", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const store = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+    try {
+      const run = store.createRun({
+        playlistTitle: "Rejected Beatport Candidate",
+        playlistUrl: "https://soundcloud.com/sets/rejected-beatport-candidate",
+        sourceType: "soundcloud"
+      });
+      const [track] = store.replaceRunTracks(run.id, [
+        {
+          artist: "Anyma",
+          sourcePosition: 1,
+          title: "Consciousness",
+          version: "Original Mix"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+
+      const review = store.queueRunTrackReview({
+        authorizationBasis: "purchase-entitlement",
+        availableFormats: ["mp3", "wav"],
+        candidateId: "beatport-rejected-1",
+        mixLabel: "Original Mix",
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/consciousness/rejected-1",
+        queueName: "beatport-review",
+        runTrackId: track.id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+
+      store.transitionRunTrackReviewStatus(review.id, "rejected");
+
+      expect(store.getRun(run.id)).toEqual(
+        expect.objectContaining({
+          id: run.id,
+          status: "packaging"
+        })
+      );
+
+      const generated = await generateRunArtifacts({
+        runId: run.id,
+        runStore: store,
+        workspaceRoot: tempWorkspace.workspaceRoot
+      });
+
+      expect(generated.manifest.summary).toEqual({
+        acquiredCount: 0,
+        missCount: 1,
+        trackCount: 1
+      });
+      expect(generated.manifest.tracks).toMatchObject([
+        {
+          artist: "Anyma",
+          miss: {
+            detail: "Rejected during Beatport paid review.",
+            providerId: "beatport",
+            providerName: "Beatport",
+            reason: "paid-review-rejected"
+          },
+          outcome: "missed",
+          sourcePosition: 1,
+          title: "Consciousness",
+          version: "Original Mix"
+        }
+      ]);
+    } finally {
+      store.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
+  it("keeps purchased Beatport reviews out of packaging until an owned file is imported", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const store = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+    try {
+      const run = store.createRun({
+        playlistTitle: "Purchased Beatport Candidate",
+        playlistUrl: "https://open.spotify.com/playlist/37i9dQZF1DX5trt9i14X7j",
+        sourceType: "spotify"
+      });
+      const [track] = store.replaceRunTracks(run.id, [
+        {
+          artist: "Mau P",
+          sourcePosition: 1,
+          title: "Drugs From Amsterdam"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+
+      const review = store.queueRunTrackReview({
+        authorizationBasis: "purchase-entitlement",
+        availableFormats: ["mp3"],
+        candidateId: "beatport-purchased-1",
+        mixLabel: null,
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl:
+          "https://www.beatport.com/track/drugs-from-amsterdam/purchased-1",
+        queueName: "beatport-review",
+        runTrackId: track.id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+
+      store.transitionRunTrackReviewStatus(review.id, "approved");
+      store.transitionRunTrackReviewStatus(review.id, "purchased");
+
+      expect(store.getRun(run.id)).toEqual(
+        expect.objectContaining({
+          id: run.id,
+          status: "awaiting-approval"
+        })
+      );
+      expect(
+        store
+          .getRun(run.id)
+          ?.tracks.map((candidate) => [candidate.sourcePosition, candidate.status])
+      ).toEqual([[1, "awaiting-approval"]]);
+
+      await expect(
+        generateRunArtifacts({
+          runId: run.id,
+          runStore: store,
+          workspaceRoot: tempWorkspace.workspaceRoot
+        })
+      ).rejects.toThrowError(
+        new RunArtifactsNotReadyError(
+          run.id,
+          `Run track "${track.id}" is still "awaiting-approval" and cannot be packaged yet.`
+        )
+      );
+    } finally {
+      store.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
   it("uses the most recently persisted artifact note when attempts share a timestamp", async () => {
     const tempWorkspace = createTempWorkspace();
     const store = createRunStore({ databasePath: tempWorkspace.databasePath });
