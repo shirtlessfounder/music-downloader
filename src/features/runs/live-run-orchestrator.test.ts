@@ -9,6 +9,7 @@ import {
 } from "@/features/artifacts/run-artifacts";
 import {
   buildProviderMissResult,
+  buildProviderRejectedResult,
   defineAutomaticProvider,
   type AutomaticProviderDefinition,
   type ProviderCandidate,
@@ -398,6 +399,89 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           })
         })
       );
+    } finally {
+      runStore.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
+  it("marks the run failed when automatic providers end with a retryable provider rejection", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+    const soundCloudProvider = defineAutomaticProvider({
+      id: "soundcloud-direct-downloads",
+      displayName: "SoundCloud Direct Downloads",
+      authorizationBasis: "uploader-enabled-download",
+      priceTier: "free",
+      priorityRank: 10,
+      supportedFormats: ["original-upload-format"],
+      search: async () =>
+        buildProviderRejectedResult({
+          detail:
+            "SoundCloud provider session expired before automatic acquisition could continue.",
+          providerId: "soundcloud-direct-downloads",
+          providerName: "SoundCloud Direct Downloads",
+          reason: "provider-session-expired"
+        }),
+      acquire: async () => {
+        throw new Error("SoundCloud acquire should not run after a rejection.");
+      }
+    });
+    const bandcampProvider = defineAutomaticProvider({
+      id: "bandcamp",
+      displayName: "Bandcamp",
+      authorizationBasis: "rights-holder-storefront",
+      priceTier: "free-or-owned",
+      priorityRank: 20,
+      supportedFormats: ["mp3", "wav"],
+      search: async () =>
+        buildProviderMissResult({
+          detail: "No Bandcamp result matched the requested track.",
+          providerId: "bandcamp",
+          providerName: "Bandcamp",
+          reason: "no-search-results",
+          trackMissReason: "no-authorized-source-match"
+        }),
+      acquire: async () => {
+        throw new Error("Bandcamp acquire should not run after a miss.");
+      }
+    });
+
+    try {
+      const run = await submitLiveRunFromPlaylistUrl(
+        "https://soundcloud.com/dj-nova/sets/warehouse-finds",
+        {
+          createRunFromPlaylistUrl: async (playlistUrl) =>
+            createStubRun(runStore, playlistUrl, [
+              {
+                artist: "Anyma",
+                sourcePosition: 1,
+                title: "Consciousness",
+                version: "Extended Mix"
+              }
+            ]),
+          providerRegistry: createStubRegistry([soundCloudProvider, bandcampProvider]),
+          runStore,
+          workspaceRoot: tempWorkspace.workspaceRoot
+        }
+      );
+
+      expect(run.status).toBe("failed");
+      expect(run.artifacts).toEqual([]);
+      expect(run.tracks.map((track) => [track.sourcePosition, track.status])).toEqual([
+        [1, "failed"]
+      ]);
+
+      const attempts = runStore.listRunTrackAttempts(run.id);
+
+      expect(attempts.map((attempt) => [attempt.providerKey, attempt.outcome])).toEqual([
+        ["bandcamp", "skipped"],
+        ["soundcloud-direct-downloads", "failed"]
+      ]);
+      expect(
+        attempts.find((attempt) => attempt.providerKey === "soundcloud-direct-downloads")?.note
+      ).toContain("provider session expired");
     } finally {
       runStore.close();
       tempWorkspace.cleanup();
