@@ -139,18 +139,28 @@ export function extractMixMetadata(rawTitle: string): CanonicalMixMetadata {
   if (labelMatch) {
     const displayLabel = cleanDisplayText(labelMatch[1]);
     const classification = classifyMixLabel(displayLabel);
+    const cleanTitle = cleanDisplayText(
+      titleWithoutPromotions.slice(0, titleWithoutPromotions.length - labelMatch[0].length)
+    );
 
     if (classification !== null) {
       return {
-        cleanTitle: cleanDisplayText(
-          titleWithoutPromotions.slice(0, titleWithoutPromotions.length - labelMatch[0].length)
-        ),
+        cleanTitle,
         displayLabel,
         normalizedLabel: normalizeSearchText(displayLabel),
         ...classification,
         confidence: "high"
       };
     }
+
+    return {
+      cleanTitle,
+      displayLabel,
+      normalizedLabel: normalizeSearchText(displayLabel),
+      kind: "variant",
+      selectionClass: "reject",
+      confidence: "high"
+    };
   }
 
   return {
