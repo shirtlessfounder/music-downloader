@@ -8,6 +8,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { BrowserSessionService } from "@/features/browser/browser-session-service";
+import { matchTrackCandidates } from "@/features/matching/track-matcher";
 import { canonicalizeTrack } from "@/features/tracks/canonical-track";
 
 import {
@@ -15,7 +16,8 @@ import {
   buildProviderMissResult,
   buildProviderRejectedResult,
   defineAutomaticProvider,
-  defineReviewQueueProvider
+  defineReviewQueueProvider,
+  type ProviderCandidate
 } from "./provider-registry";
 import {
   SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
@@ -102,7 +104,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
   });
 
   it(
-    "returns an authorized candidate when a matching track exposes an uploader-enabled download",
+    "returns a matcher-eligible candidate when a matching track exposes an uploader-enabled MP3 download",
     async () => {
       const workspaceRoot = await mkdtemp(
         path.join(os.tmpdir(), "music-downloader-soundcloud-provider-")
@@ -113,10 +115,121 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
           {
             artistName: "DJ Sealer",
             download: {
-              body: "lossless fixture payload\n",
-              contentType: "audio/flac",
-              fileName: "warehouse-tool.flac"
+              body: "mp3 fixture payload\n",
+              contentType: "audio/mpeg",
+              fileName: "warehouse-tool.mp3"
             },
+            durationSeconds: 392,
+            path: "/dj-sealer/warehouse-tool-extended-mix",
+            title: "Warehouse Tool (Extended Mix)",
+            trackId: "111"
+          }
+        ]
+      });
+      const browserSessionService = new BrowserSessionService({ workspaceRoot });
+      const provider = createSoundCloudDirectDownloadsProvider({
+        baseUrl: fixtureServer.origin,
+        browserSessionService
+      });
+
+      try {
+        await seedAuthenticatedSession(browserSessionService);
+        const track = canonicalizeTrack({
+          artistName: "DJ Sealer",
+          source: "spotify",
+          title: "Warehouse Tool (Extended Mix)"
+        });
+
+        const result = await provider.search({ track });
+
+        expect(result).toEqual({
+          outcome: "candidates",
+          candidates: [
+            {
+              artistName: "DJ Sealer",
+              authorizationBasis: "uploader-enabled-download",
+              availableFormats: ["mp3"],
+              candidateId: "111",
+              durationSeconds: 392,
+              mixConfidence: "high",
+              mixLabel: "Extended Mix",
+              priceTier: "free",
+              providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
+              providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
+              provenance: {
+                discoveredVia: "search",
+                providerTrackId: "111",
+                providerUrl:
+                  `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`,
+                searchQuery: "DJ Sealer Warehouse Tool Extended Mix",
+                sourcePageUrl:
+                  `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`
+              },
+              title: "Warehouse Tool"
+            }
+          ]
+        });
+
+        if (result.outcome !== "candidates") {
+          throw new Error("Expected SoundCloud search to produce a candidate.");
+        }
+
+        expect(
+          matchTrackCandidates({
+            candidates: result.candidates,
+            track
+          })
+        ).toMatchObject({
+          outcome: "selected",
+          rejected: [],
+          selected: {
+            candidate: {
+              candidateId: "111"
+            },
+            reason: "accepted-extended-mix",
+            selectedFormat: "mp3"
+          }
+        });
+      } finally {
+        await browserSessionService.shutdown();
+        await fixtureServer.close();
+        await rm(workspaceRoot, { force: true, recursive: true });
+      }
+    },
+    15_000
+  );
+
+  it.each([
+    {
+      detailPattern: /mp3 or wav/i,
+      download: {
+        body: "lossless fixture payload\n",
+        contentType: "audio/flac",
+        fileName: "warehouse-tool.flac"
+      },
+      name: "a FLAC direct download"
+    },
+    {
+      detailPattern: /mp3 or wav/i,
+      download: {
+        body: "opaque fixture payload\n",
+        contentType: "application/octet-stream",
+        fileName: "warehouse-tool"
+      },
+      name: "an indeterminate direct-download format"
+    }
+  ])(
+    "returns a structured miss when the matching track exposes $name",
+    async ({ detailPattern, download }) => {
+      const workspaceRoot = await mkdtemp(
+        path.join(os.tmpdir(), "music-downloader-soundcloud-provider-format-")
+      );
+      const fixtureServer = await startSoundCloudFixtureServer({
+        searchResults: ["/dj-sealer/warehouse-tool-extended-mix"],
+        tracks: [
+          {
+            artistName: "DJ Sealer",
+            download,
             durationSeconds: 392,
             path: "/dj-sealer/warehouse-tool-extended-mix",
             title: "Warehouse Tool (Extended Mix)",
@@ -142,32 +255,18 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
         });
 
         expect(result).toEqual({
-          outcome: "candidates",
-          candidates: [
-            {
-              artistName: "DJ Sealer",
-              authorizationBasis: "uploader-enabled-download",
-              availableFormats: ["original-upload-format"],
-              candidateId: "111",
-              durationSeconds: 392,
-              mixConfidence: "high",
-              mixLabel: "Extended Mix",
-              priceTier: "free",
-              providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
-              providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-              provenance: {
-                discoveredVia: "search",
-                providerTrackId: "111",
-                providerUrl:
-                  `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`,
-                searchQuery: "DJ Sealer Warehouse Tool Extended Mix",
-                sourcePageUrl:
-                  `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`
-              },
-              title: "Warehouse Tool"
-            }
-          ]
+          outcome: "miss",
+          miss: expect.objectContaining({
+            providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
+            providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
+            reason: "no-authorized-candidate",
+            trackMissReason: "no-authorized-source-match"
+          })
         });
+        if (result.outcome !== "miss") {
+          throw new Error("Expected SoundCloud search to return a provider miss.");
+        }
+        expect(result.miss.detail).toMatch(detailPattern);
       } finally {
         await browserSessionService.shutdown();
         await fixtureServer.close();
@@ -363,20 +462,26 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
       try {
         await seedAuthenticatedSession(browserSessionService);
 
-        const searchResult = await provider.search({
-          track: canonicalizeTrack({
-            artistName: "DJ Sealer",
-            source: "spotify",
-            title: "Warehouse Tool (Extended Mix)"
-          })
-        });
-
-        expect(searchResult.outcome).toBe("candidates");
-        if (searchResult.outcome !== "candidates") {
-          throw new Error("Expected SoundCloud search to produce a candidate.");
-        }
-
-        const candidate = searchResult.candidates[0];
+        const candidate: ProviderCandidate = {
+          artistName: "DJ Sealer",
+          authorizationBasis: "uploader-enabled-download",
+          availableFormats: ["original-upload-format"],
+          candidateId: "111",
+          durationSeconds: 392,
+          mixConfidence: "high",
+          mixLabel: "Extended Mix",
+          priceTier: "free",
+          providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
+          providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
+          provenance: {
+            discoveredVia: "search",
+            providerTrackId: "111",
+            providerUrl: `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`,
+            searchQuery: "DJ Sealer Warehouse Tool Extended Mix",
+            sourcePageUrl: `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`
+          },
+          title: "Warehouse Tool"
+        };
         const acquisition = await provider.acquire({
           candidate,
           track: canonicalizeTrack({
@@ -514,7 +619,7 @@ function handleFixtureRequest(
     const trackUrl = `http://${host}${trackFixture.path}`;
     const downloadMarkup =
       "fileName" in trackFixture.download
-        ? `<a href="/downloads/${trackFixture.trackId}/${trackFixture.download.fileName}" download>Download file</a>`
+        ? `<a data-testid="authorized-download-link" href="/downloads/${trackFixture.trackId}/${trackFixture.download.fileName}" download="${escapeHtml(trackFixture.download.fileName)}" type="${escapeHtml(trackFixture.download.contentType)}">Download file</a>`
         : trackFixture.download.kind === "external"
           ? `<a href="${trackFixture.download.externalUrl}" data-testid="external-download-link">External download</a>`
           : `<p>Downloads are not enabled on this track.</p>`;

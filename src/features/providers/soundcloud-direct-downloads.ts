@@ -63,6 +63,7 @@ interface ParsedTrackSnapshot {
   download:
     | {
         contentType: string | null;
+        fileName: string | null;
         kind: "authorized";
       }
     | {
@@ -147,6 +148,7 @@ async function searchSoundCloudDirectDownloads(input: {
       }
 
       const candidates: ProviderCandidate[] = [];
+      let formatUnavailableDetail: string | null = null;
       let unauthorizedDetail: string | null = null;
 
       for (const trackUrl of trackUrls) {
@@ -158,7 +160,14 @@ async function searchSoundCloudDirectDownloads(input: {
         }
 
         if (snapshot.download.kind === "authorized") {
-          candidates.push(buildCandidate(snapshot, searchQuery));
+          const availableFormats = resolveCandidateAvailableFormats(snapshot.download);
+
+          if (availableFormats.length > 0) {
+            candidates.push(buildCandidate(snapshot, searchQuery, availableFormats));
+            continue;
+          }
+
+          formatUnavailableDetail = buildUnavailableFormatDetail();
           continue;
         }
 
@@ -170,6 +179,16 @@ async function searchSoundCloudDirectDownloads(input: {
           outcome: "candidates" as const,
           candidates
         };
+      }
+
+      if (formatUnavailableDetail) {
+        return buildProviderMissResult({
+          detail: formatUnavailableDetail,
+          providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
+          providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
+          reason: "no-authorized-candidate",
+          trackMissReason: "no-authorized-source-match"
+        });
       }
 
       if (unauthorizedDetail) {
@@ -389,6 +408,7 @@ async function parseTrackSnapshot(page: Page): Promise<ParsedTrackSnapshot> {
           artistName,
           download: {
             contentType: authorizedDownload.getAttribute("type"),
+            fileName: readAuthorizedDownloadFileName(authorizedDownload),
             kind: "authorized" as const
           },
           durationSeconds,
@@ -486,6 +506,22 @@ async function parseTrackSnapshot(page: Page): Promise<ParsedTrackSnapshot> {
         }
 
         return null;
+      }
+
+      function readAuthorizedDownloadFileName(anchor: HTMLAnchorElement) {
+        const explicitFileName = anchor.getAttribute("download")?.trim();
+
+        if (explicitFileName) {
+          return explicitFileName;
+        }
+
+        try {
+          const href = new URL(anchor.href, window.location.href);
+          const fileName = href.pathname.split("/").pop()?.trim();
+          return fileName || null;
+        } catch {
+          return null;
+        }
       }
 
       function readMetaValue(name: string) {
@@ -626,7 +662,11 @@ function isTrackMatch(track: CanonicalTrack, snapshot: ParsedTrackSnapshot) {
   return true;
 }
 
-function buildCandidate(snapshot: ParsedTrackSnapshot, searchQuery: string): ProviderCandidate {
+function buildCandidate(
+  snapshot: ParsedTrackSnapshot,
+  searchQuery: string,
+  availableFormats: readonly ProviderArtifactFormat[]
+): ProviderCandidate {
   const candidateTrack = canonicalizeTrack({
     artistName: snapshot.artistName ?? "",
     duration: snapshot.durationSeconds,
@@ -639,7 +679,7 @@ function buildCandidate(snapshot: ParsedTrackSnapshot, searchQuery: string): Pro
   return {
     artistName: candidateTrack.primaryArtist ?? snapshot.artistName ?? "Unknown Artist",
     authorizationBasis: "uploader-enabled-download",
-    availableFormats: ["original-upload-format"],
+    availableFormats,
     candidateId: snapshot.providerTrackId ?? snapshot.providerUrl,
     durationSeconds: snapshot.durationSeconds,
     mixConfidence: candidateTrack.mix.confidence,
@@ -656,6 +696,28 @@ function buildCandidate(snapshot: ParsedTrackSnapshot, searchQuery: string): Pro
     },
     title: candidateTrack.title
   };
+}
+
+function resolveCandidateAvailableFormats(
+  download: Extract<ParsedTrackSnapshot["download"], { kind: "authorized" }>
+) {
+  const inferredFormat = inferArtifactFormat(
+    normalizeFileExtension(download.fileName ?? ""),
+    download.contentType
+  );
+
+  if (inferredFormat === "mp3" || inferredFormat === "wav") {
+    return [inferredFormat];
+  }
+
+  return [];
+}
+
+function buildUnavailableFormatDetail() {
+  return (
+    "Matched SoundCloud track exposed an uploader-enabled download, but the file format " +
+    "could not be confirmed as an approved MP3 or WAV asset."
+  );
 }
 
 function buildUnauthorizedDownloadDetail(
@@ -718,6 +780,37 @@ function inferArtifactFormat(
       return "ogg-vorbis";
     case "m4a":
       return normalizedContentTypeIs(contentType, "audio/alac") ? "alac" : "original-upload-format";
+    default:
+      return inferArtifactFormatFromContentType(contentType);
+  }
+}
+
+function inferArtifactFormatFromContentType(
+  contentType: string | null
+): ProviderArtifactFormat {
+  switch (normalizeContentType(contentType)) {
+    case "audio/mpeg":
+    case "audio/mp3":
+      return "mp3";
+    case "audio/wav":
+    case "audio/wave":
+    case "audio/x-wav":
+      return "wav";
+    case "audio/aiff":
+    case "audio/x-aiff":
+      return "aiff";
+    case "audio/flac":
+    case "audio/x-flac":
+      return "flac";
+    case "audio/aac":
+    case "audio/x-aac":
+      return "aac";
+    case "audio/ogg":
+    case "audio/vorbis":
+    case "application/ogg":
+      return "ogg-vorbis";
+    case "audio/alac":
+      return "alac";
     default:
       return "original-upload-format";
   }
