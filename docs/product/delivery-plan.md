@@ -33,3 +33,4 @@ Use this as the repo-local execution brief.
 - still break implementation into planner-sized and worker-sized tasks
 - direct/native and stable sources should land before brittle browser-only integrations when sequencing work
 - paid fallback remains in scope, but after free-source flows and queueing primitives exist
+- approved epic PRs to `main` are auto-merged by the super agent for this repo once review passes

@@ -44,3 +44,4 @@ Build a local web app that:
 - provider research is part of product scope
 - planner should decompose the whole scope into worker-sized issues
 - implementation should stay modular so additional providers can be added later
+- approved epic PRs targeting `main` are auto-merged by the super agent for this repo; no human admin wait state

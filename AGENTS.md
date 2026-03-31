@@ -25,3 +25,4 @@ Execution guidance:
 - still decompose into planner-sized and worker-sized issues
 - prioritize modular providers and explicit matching rules
 - do not introduce stream-ripping or bypass flows
+- for this repo, approved epic PRs to `main` should be auto-merged by the super agent; there is no human admin merge gate
