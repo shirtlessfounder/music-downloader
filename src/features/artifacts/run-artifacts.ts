@@ -428,7 +428,7 @@ function getLatestArtifactSourceNotesByTrackId(
   return notesByTrackId;
 }
 
-function parseRunTrackArtifactSourceNote(note: string | null) {
+export function parseRunTrackArtifactSourceNote(note: string | null) {
   if (!note) {
     return null;
   }
