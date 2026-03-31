@@ -726,7 +726,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
             INNER JOIN run_tracks
               ON run_tracks.id = acquisition_attempts.run_track_id
             WHERE run_tracks.run_id = ?
-            ORDER BY acquisition_attempts.created_at DESC, acquisition_attempts.id DESC
+            ORDER BY acquisition_attempts.created_at DESC, acquisition_attempts.rowid DESC
           `
         )
         .all(runId) as AcquisitionAttemptRow[];

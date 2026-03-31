@@ -75,6 +75,130 @@ function readStoredZipEntries(zipFilePath: string) {
 }
 
 describe("generateRunArtifacts", () => {
+  it("uses the most recently persisted artifact note when attempts share a timestamp", async () => {
+    const tempWorkspace = createTempWorkspace();
+    const store = createRunStore({ databasePath: tempWorkspace.databasePath });
+    let randomUuidSpy:
+      | ReturnType<typeof vi.spyOn>
+      | undefined;
+
+    try {
+      const run = store.createRun({
+        playlistTitle: "Deterministic Notes",
+        playlistUrl: "https://open.spotify.com/playlist/37i9dQZF1DX1s9knjP51Oa",
+        sourceType: "spotify"
+      });
+      const [track] = store.replaceRunTracks(run.id, [
+        {
+          artist: "DJ Sealer",
+          sourcePosition: 1,
+          title: "Warehouse Tool",
+          version: "Extended Mix"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+      store.transitionRunStatus(run.id, "packaging");
+
+      const downloadDirectory = path.join(tempWorkspace.workspaceRoot, "downloads");
+      const acquiredFilePath = path.join(downloadDirectory, "warehouse-tool-latest.mp3");
+      const acquiredFileBody = Buffer.from("latest acquired payload\n", "utf8");
+
+      mkdirSync(downloadDirectory, { recursive: true });
+      writeFileSync(acquiredFilePath, acquiredFileBody);
+
+      store.updateRunTrackStatus(track.id, "acquired");
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-03-31T12:00:00.000Z"));
+
+      randomUuidSpy = vi.spyOn(globalThis.crypto, "randomUUID");
+      randomUuidSpy
+        .mockImplementationOnce(() => "f0000000-0000-4000-8000-000000000000")
+        .mockImplementationOnce(() => "00000000-0000-4000-8000-000000000000");
+
+      store.recordAcquisitionAttempt({
+        note: JSON.stringify(
+          buildMissedArtifactSourceNote({
+            miss: {
+              detail: "Older miss note should not win the same-timestamp tie.",
+              reason: "no-authorized-source-match"
+            }
+          })
+        ),
+        outcome: "missed",
+        providerKey: "track-matcher",
+        runTrackId: track.id
+      });
+
+      store.recordAcquisitionAttempt({
+        note: JSON.stringify(
+          buildAcquiredArtifactSourceNote({
+            artifact: {
+              contentType: "audio/mpeg",
+              fileExtension: "mp3",
+              fileName: "warehouse-tool-latest.mp3",
+              format: "mp3",
+              localFilePath: acquiredFilePath,
+              sha256: createSha256(acquiredFileBody),
+              sizeBytes: acquiredFileBody.length
+            },
+            provider: {
+              authorizationBasis: "uploader-enabled-download",
+              candidateId: "sc-track-latest",
+              discoveredVia: "search",
+              priceTier: "free",
+              providerId: "soundcloud-direct-downloads",
+              providerName: "SoundCloud Direct Downloads",
+              providerUrl:
+                "https://soundcloud.com/dj-sealer/warehouse-tool-extended-mix"
+            },
+            selection: {
+              details:
+                "Later acquired note should beat the older miss even with identical timestamps.",
+              reason: "accepted-extended-mix",
+              selectedFormat: "mp3"
+            }
+          })
+        ),
+        outcome: "matched",
+        providerKey: "soundcloud-direct-downloads",
+        runTrackId: track.id
+      });
+
+      const generated = await generateRunArtifacts({
+        runId: run.id,
+        runStore: store,
+        workspaceRoot: tempWorkspace.workspaceRoot
+      });
+
+      expect(generated.manifest.summary).toEqual({
+        acquiredCount: 1,
+        missCount: 0,
+        trackCount: 1
+      });
+      expect(generated.manifest.tracks).toMatchObject([
+        {
+          artist: "DJ Sealer",
+          outcome: "acquired",
+          selection: {
+            providerId: "soundcloud-direct-downloads",
+            zipEntryName: "001 - DJ Sealer - Warehouse Tool (Extended Mix).mp3"
+          },
+          sourcePosition: 1,
+          title: "Warehouse Tool",
+          version: "Extended Mix"
+        }
+      ]);
+    } finally {
+      randomUuidSpy?.mockRestore();
+      vi.useRealTimers();
+      store.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
   it("packages acquired downloads, misses, and manifest metadata from persisted run data", async () => {
     const tempWorkspace = createTempWorkspace();
     const store = createRunStore({ databasePath: tempWorkspace.databasePath });
