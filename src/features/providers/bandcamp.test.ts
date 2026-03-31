@@ -245,7 +245,7 @@ describe("createBandcampProvider", () => {
   );
 
   it(
-    "acquires the preferred entitled download when Bandcamp omits fixture-only download selectors",
+    "finds and acquires the preferred entitled download through a Bandcamp download page without fixture-only selectors",
     async () => {
       const workspaceRoot = await mkdtemp(
         path.join(os.tmpdir(), "music-downloader-bandcamp-provider-production-selectors-")
@@ -278,8 +278,10 @@ describe("createBandcampProvider", () => {
               }
             ],
             durationSeconds: 392,
+            downloadPagePath: "/download/warehouse-tool-production-selectors",
             entitlement: "owned",
             includeDownloadTestId: false,
+            includeReleaseEntitlementTestHooks: false,
             path: "/album/warehouse-tool-production-selectors",
             title: "Warehouse Tool (Extended Mix)",
             trackId: "bandcamp-track-112"
@@ -563,10 +565,12 @@ type DownloadOptionFixture = {
 
 type ReleaseFixture = {
   artistName: string;
+  downloadPagePath?: string;
   downloadOptions: DownloadOptionFixture[];
   durationSeconds: number;
   entitlement: ReleaseEntitlement;
   includeDownloadTestId?: boolean;
+  includeReleaseEntitlementTestHooks?: boolean;
   path: string;
   title: string;
   trackId: string;
@@ -661,18 +665,24 @@ function handleFixtureRequest(
     const host = request.headers.host ?? "127.0.0.1";
     const releaseUrl = `http://${host}${releaseFixture.path}`;
     const downloadMarkup =
-      releaseFixture.downloadOptions.length > 0
-        ? releaseFixture.downloadOptions
-            .map(
-              (downloadOption) =>
-                `<a${
-                  releaseFixture.includeDownloadTestId === false
-                    ? ""
-                    : ' data-testid="bandcamp-download-link"'
-                } data-entitlement="${releaseFixture.entitlement}" data-format-key="${escapeHtml(downloadOption.formatKey)}" href="/downloads/${releaseFixture.trackId}/${escapeHtml(downloadOption.fileName)}" download="${escapeHtml(downloadOption.fileName)}" type="${escapeHtml(downloadOption.contentType)}">${escapeHtml(downloadOption.label)}</a>`
-            )
-            .join("\n")
+      releaseFixture.downloadOptions.length > 0 && !releaseFixture.downloadPagePath
+        ? renderDownloadLinks(releaseFixture)
         : `<p data-testid="bandcamp-paid-message">Paid checkout required for this release.</p>`;
+    const releaseDownloadMarkup =
+      releaseFixture.downloadOptions.length > 0 && releaseFixture.downloadPagePath
+        ? `<a data-entitlement="${escapeHtml(releaseFixture.entitlement)}" href="${escapeHtml(releaseFixture.downloadPagePath)}">Download</a>`
+        : downloadMarkup;
+    const releaseRootAttributes =
+      releaseFixture.includeReleaseEntitlementTestHooks === false
+        ? ""
+        : `
+      data-testid="bandcamp-release"
+      data-bandcamp-entitlement="${escapeHtml(releaseFixture.entitlement)}"`;
+    const releaseEntitlementMarkup =
+      releaseFixture.includeReleaseEntitlementTestHooks === false
+        ? ""
+        : `
+      <p data-testid="bandcamp-entitlement">${escapeHtml(releaseFixture.entitlement)}</p>`;
 
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html>
@@ -697,15 +707,32 @@ function handleFixtureRequest(
     })}</script>
   </head>
   <body>
-    <main
-      data-testid="bandcamp-release"
-      data-bandcamp-entitlement="${escapeHtml(releaseFixture.entitlement)}"
-    >
+    <main${releaseRootAttributes}>
       <h1>${escapeHtml(releaseFixture.title)}</h1>
       <p data-testid="bandcamp-artist-name">${escapeHtml(releaseFixture.artistName)}</p>
-      <p data-testid="bandcamp-entitlement">${escapeHtml(releaseFixture.entitlement)}</p>
+      ${releaseEntitlementMarkup}
       <section data-testid="bandcamp-downloads">
-        ${downloadMarkup}
+        ${releaseDownloadMarkup}
+      </section>
+    </main>
+  </body>
+</html>`);
+
+    return;
+  }
+
+  const downloadPageFixture = [...releaseFixtures.values()].find(
+    (fixture) => fixture.downloadPagePath === requestUrl.pathname
+  );
+
+  if (downloadPageFixture) {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
+      <section data-testid="bandcamp-downloads">
+        ${renderDownloadLinks(downloadPageFixture)}
       </section>
     </main>
   </body>
@@ -771,4 +798,17 @@ function escapeHtml(value: string) {
     .replaceAll("\"", "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function renderDownloadLinks(releaseFixture: ReleaseFixture) {
+  return releaseFixture.downloadOptions
+    .map(
+      (downloadOption) =>
+        `<a${
+          releaseFixture.includeDownloadTestId === false
+            ? ""
+            : ' data-testid="bandcamp-download-link"'
+        } data-entitlement="${releaseFixture.entitlement}" data-format-key="${escapeHtml(downloadOption.formatKey)}" href="/downloads/${releaseFixture.trackId}/${escapeHtml(downloadOption.fileName)}" download="${escapeHtml(downloadOption.fileName)}" type="${escapeHtml(downloadOption.contentType)}">${escapeHtml(downloadOption.label)}</a>`
+    )
+    .join("\n");
 }

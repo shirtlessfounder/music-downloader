@@ -37,6 +37,10 @@ const DOWNLOAD_LINK_SELECTOR = [
   'a[download][data-format-key]',
   'a[download][href*="/download"]'
 ].join(", ");
+const DOWNLOAD_PAGE_LINK_SELECTOR = [
+  'a[data-entitlement][href*="/download"]:not([download])',
+  'a[href*="/download"]:not([download])'
+].join(", ");
 
 type BandcampEntitlement =
   | "free"
@@ -72,6 +76,10 @@ interface ParsedReleaseSnapshot {
   providerTrackId: string | null;
   providerUrl: string;
   title: string | null;
+}
+
+interface ParsedBandcampPageSnapshot extends ParsedReleaseSnapshot {
+  downloadPageUrl: string | null;
 }
 
 type RankedDownloadFormat = Exclude<ProviderArtifactFormat, "unknown">;
@@ -390,305 +398,395 @@ async function readSearchResultUrls(page: Page) {
 }
 
 async function parseReleaseSnapshot(page: Page): Promise<ParsedReleaseSnapshot> {
-  return page.evaluate((downloadLinkSelector) => {
-    const recording = readMusicRecordingStructuredData();
-    const artistName =
-      readMetaValue("bandcamp:artist_name") ??
-      readTextContent('[data-testid="bandcamp-artist-name"]') ??
-      readMusicRecordingArtistName(recording) ??
-      null;
-    const title =
-      readMusicRecordingTextField(recording, "name") ??
-      readMetaValue("og:title") ??
-      readHeadingText() ??
-      null;
-    const providerTrackId =
-      readMusicRecordingTextField(recording, "identifier") ??
-      readMetaValue("bandcamp:track_id") ??
-      null;
-    const providerUrl =
-      readMusicRecordingTextField(recording, "url") ??
-      readMetaValue("og:url") ??
-      window.location.href;
-    const durationSeconds =
-      parseNumber(readMetaValue("bandcamp:duration_seconds")) ??
-      parseIsoDurationSeconds(readMusicRecordingTextField(recording, "duration"));
-    const entitlement = normalizeEntitlement(
-      readBandcampEntitlement() ?? readPaidOnlyMessage() ?? null
-    );
-    const downloadOptions = [...document.querySelectorAll(downloadLinkSelector)]
-      .map((element) => {
-        if (!(element instanceof HTMLAnchorElement)) {
+  const releasePageSnapshot = await readBandcampPageSnapshot(page);
+
+  if (
+    releasePageSnapshot.downloadOptions.length > 0 ||
+    releasePageSnapshot.downloadPageUrl === null
+  ) {
+    return toReleaseSnapshot(releasePageSnapshot);
+  }
+
+  await page.goto(releasePageSnapshot.downloadPageUrl, { waitUntil: "load" });
+  const downloadPageSnapshot = await readBandcampPageSnapshot(page);
+
+  return {
+    ...toReleaseSnapshot(releasePageSnapshot),
+    downloadOptions: downloadPageSnapshot.downloadOptions,
+    entitlement: mergeEntitlement(
+      releasePageSnapshot.entitlement,
+      downloadPageSnapshot.entitlement
+    )
+  };
+}
+
+async function readBandcampPageSnapshot(page: Page): Promise<ParsedBandcampPageSnapshot> {
+  return page.evaluate(
+    ({ downloadLinkSelector, downloadPageLinkSelector }) => {
+      const recording = readMusicRecordingStructuredData();
+      const artistName =
+        readMetaValue("bandcamp:artist_name") ??
+        readTextContent('[data-testid="bandcamp-artist-name"]') ??
+        readMusicRecordingArtistName(recording) ??
+        null;
+      const title =
+        readMusicRecordingTextField(recording, "name") ??
+        readMetaValue("og:title") ??
+        readHeadingText() ??
+        null;
+      const providerTrackId =
+        readMusicRecordingTextField(recording, "identifier") ??
+        readMetaValue("bandcamp:track_id") ??
+        null;
+      const providerUrl =
+        readMusicRecordingTextField(recording, "url") ??
+        readMetaValue("og:url") ??
+        window.location.href;
+      const durationSeconds =
+        parseNumber(readMetaValue("bandcamp:duration_seconds")) ??
+        parseIsoDurationSeconds(readMusicRecordingTextField(recording, "duration"));
+      const entitlement = normalizeEntitlement(
+        readBandcampEntitlement() ?? readPaidOnlyMessage() ?? null
+      );
+      const downloadOptions = [...document.querySelectorAll(downloadLinkSelector)]
+        .map((element) => {
+          if (!(element instanceof HTMLAnchorElement)) {
+            return null;
+          }
+
+          return {
+            contentType: element.getAttribute("type"),
+            fileName: readAuthorizedDownloadFileName(element),
+            formatKey: element.getAttribute("data-format-key")?.trim() || null,
+            label: element.textContent?.trim() || null,
+            reacquireSelector: buildAuthorizedDownloadSelector(element)
+          };
+        })
+        .filter((option): option is NonNullable<typeof option> => option !== null);
+      const downloadPageUrl = readDownloadPageUrl();
+
+      return {
+        artistName,
+        downloadOptions,
+        downloadPageUrl,
+        durationSeconds,
+        entitlement,
+        providerTrackId,
+        providerUrl,
+        title
+      };
+
+      function readBandcampEntitlement() {
+        const releaseRoot = document.querySelector('[data-testid="bandcamp-release"]');
+        const datasetValue =
+          releaseRoot?.getAttribute("data-bandcamp-entitlement")?.trim() ?? null;
+
+        if (datasetValue) {
+          return datasetValue;
+        }
+
+        const explicitEntitlement = readTextContent('[data-testid="bandcamp-entitlement"]');
+
+        if (explicitEntitlement) {
+          return explicitEntitlement;
+        }
+
+        for (const element of document.querySelectorAll("[data-entitlement]")) {
+          const value = element.getAttribute("data-entitlement")?.trim();
+
+          if (value) {
+            return value;
+          }
+        }
+
+        return null;
+      }
+
+      function readPaidOnlyMessage() {
+        return readTextContent('[data-testid="bandcamp-paid-message"]');
+      }
+
+      function readDownloadPageUrl() {
+        const link = document.querySelector(downloadPageLinkSelector);
+
+        if (!(link instanceof HTMLAnchorElement)) {
           return null;
         }
 
-        return {
-          contentType: element.getAttribute("type"),
-          fileName: readAuthorizedDownloadFileName(element),
-          formatKey: element.getAttribute("data-format-key")?.trim() || null,
-          label: element.textContent?.trim() || null,
-          reacquireSelector: buildAuthorizedDownloadSelector(element)
-        };
-      })
-      .filter((option): option is NonNullable<typeof option> => option !== null);
+        const href = link.getAttribute("href");
 
-    return {
-      artistName,
-      downloadOptions,
-      durationSeconds,
-      entitlement,
-      providerTrackId,
-      providerUrl,
-      title
-    };
+        if (!href) {
+          return null;
+        }
 
-    function readBandcampEntitlement() {
-      const releaseRoot = document.querySelector('[data-testid="bandcamp-release"]');
-      const datasetValue =
-        releaseRoot?.getAttribute("data-bandcamp-entitlement")?.trim() ?? null;
+        try {
+          return new URL(href, window.location.href).toString();
+        } catch {
+          return null;
+        }
+      }
 
-      return datasetValue ?? readTextContent('[data-testid="bandcamp-entitlement"]');
-    }
+      function readMusicRecordingStructuredData() {
+        for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+          const payload = parseJson(script.textContent);
 
-    function readPaidOnlyMessage() {
-      return readTextContent('[data-testid="bandcamp-paid-message"]');
-    }
-
-    function readMusicRecordingStructuredData() {
-      for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
-        const payload = parseJson(script.textContent);
-
-        for (const candidate of flattenStructuredData(payload)) {
-          if (
-            candidate &&
-            typeof candidate === "object" &&
-            normalizeStructuredDataType((candidate as { "@type"?: unknown })["@type"]) ===
-              "musicrecording"
-          ) {
-            return candidate as Record<string, unknown>;
+          for (const candidate of flattenStructuredData(payload)) {
+            if (
+              candidate &&
+              typeof candidate === "object" &&
+              normalizeStructuredDataType((candidate as { "@type"?: unknown })["@type"]) ===
+                "musicrecording"
+            ) {
+              return candidate as Record<string, unknown>;
+            }
           }
         }
-      }
 
-      return null;
-    }
-
-    function readMusicRecordingArtistName(recording: Record<string, unknown> | null) {
-      if (!recording) {
         return null;
       }
 
-      const byArtist = recording.byArtist;
+      function readMusicRecordingArtistName(recording: Record<string, unknown> | null) {
+        if (!recording) {
+          return null;
+        }
 
-      if (typeof byArtist === "string") {
-        return byArtist.trim() || null;
+        const byArtist = recording.byArtist;
+
+        if (typeof byArtist === "string") {
+          return byArtist.trim() || null;
+        }
+
+        if (byArtist && typeof byArtist === "object") {
+          const name = (byArtist as { name?: unknown }).name;
+
+          if (typeof name === "string") {
+            return name.trim() || null;
+          }
+        }
+
+        return null;
       }
 
-      if (byArtist && typeof byArtist === "object") {
-        const name = (byArtist as { name?: unknown }).name;
+      function readMusicRecordingTextField(
+        recording: Record<string, unknown> | null,
+        field: string
+      ) {
+        if (!recording) {
+          return null;
+        }
 
-        if (typeof name === "string") {
-          return name.trim() || null;
+        const value = recording[field];
+
+        if (typeof value === "string") {
+          const trimmedValue = value.trim();
+          return trimmedValue || null;
+        }
+
+        if (typeof value === "number") {
+          return String(value);
+        }
+
+        return null;
+      }
+
+      function readAuthorizedDownloadFileName(anchor: HTMLAnchorElement) {
+        const explicitFileName = anchor.getAttribute("download")?.trim();
+
+        if (explicitFileName) {
+          return explicitFileName;
+        }
+
+        try {
+          const href = new URL(anchor.href, window.location.href);
+          const fileName = href.pathname.split("/").pop()?.trim();
+          return fileName || null;
+        } catch {
+          return null;
         }
       }
 
-      return null;
-    }
+      function buildAuthorizedDownloadSelector(anchor: HTMLAnchorElement) {
+        const selectorParts = ["a"];
+        const explicitFileName = anchor.getAttribute("download");
+        const formatKey = anchor.getAttribute("data-format-key")?.trim();
+        const href = anchor.getAttribute("href")?.trim();
 
-    function readMusicRecordingTextField(
-      recording: Record<string, unknown> | null,
-      field: string
-    ) {
-      if (!recording) {
-        return null;
+        if (explicitFileName !== null) {
+          const trimmedFileName = explicitFileName.trim();
+          selectorParts.push(
+            trimmedFileName ? `[download="${CSS.escape(trimmedFileName)}"]` : "[download]"
+          );
+        }
+
+        if (formatKey) {
+          selectorParts.push(`[data-format-key="${CSS.escape(formatKey)}"]`);
+        }
+
+        if (href) {
+          selectorParts.push(`[href="${CSS.escape(href)}"]`);
+        }
+
+        return selectorParts.length > 1 ? selectorParts.join("") : null;
       }
 
-      const value = recording[field];
+      function readMetaValue(name: string) {
+        const meta =
+          document.querySelector(`meta[name="${name}"]`) ??
+          document.querySelector(`meta[property="${name}"]`);
 
-      if (typeof value === "string") {
-        const trimmedValue = value.trim();
-        return trimmedValue || null;
+        if (!(meta instanceof HTMLMetaElement)) {
+          return null;
+        }
+
+        const content = meta.content.trim();
+        return content || null;
       }
 
-      if (typeof value === "number") {
-        return String(value);
+      function readTextContent(selector: string) {
+        const element = document.querySelector(selector);
+        const text = element?.textContent?.trim() ?? null;
+        return text || null;
       }
 
-      return null;
-    }
-
-    function readAuthorizedDownloadFileName(anchor: HTMLAnchorElement) {
-      const explicitFileName = anchor.getAttribute("download")?.trim();
-
-      if (explicitFileName) {
-        return explicitFileName;
+      function readHeadingText() {
+        const heading = document.querySelector("h1");
+        const text = heading?.textContent?.trim() ?? null;
+        return text || null;
       }
 
-      try {
-        const href = new URL(anchor.href, window.location.href);
-        const fileName = href.pathname.split("/").pop()?.trim();
-        return fileName || null;
-      } catch {
-        return null;
-      }
-    }
+      function flattenStructuredData(payload: unknown): unknown[] {
+        if (!payload) {
+          return [];
+        }
 
-    function buildAuthorizedDownloadSelector(anchor: HTMLAnchorElement) {
-      const selectorParts = ["a"];
-      const explicitFileName = anchor.getAttribute("download");
-      const formatKey = anchor.getAttribute("data-format-key")?.trim();
-      const href = anchor.getAttribute("href")?.trim();
+        if (Array.isArray(payload)) {
+          return payload.flatMap((entry) => flattenStructuredData(entry));
+        }
 
-      if (explicitFileName !== null) {
-        const trimmedFileName = explicitFileName.trim();
-        selectorParts.push(
-          trimmedFileName ? `[download="${CSS.escape(trimmedFileName)}"]` : "[download]"
-        );
-      }
+        if (typeof payload === "object") {
+          const graph = (payload as { "@graph"?: unknown })["@graph"];
 
-      if (formatKey) {
-        selectorParts.push(`[data-format-key="${CSS.escape(formatKey)}"]`);
-      }
+          if (Array.isArray(graph)) {
+            return [payload, ...graph.flatMap((entry) => flattenStructuredData(entry))];
+          }
 
-      if (href) {
-        selectorParts.push(`[href="${CSS.escape(href)}"]`);
-      }
+          return [payload];
+        }
 
-      return selectorParts.length > 1 ? selectorParts.join("") : null;
-    }
-
-    function readMetaValue(name: string) {
-      const meta =
-        document.querySelector(`meta[name="${name}"]`) ??
-        document.querySelector(`meta[property="${name}"]`);
-
-      if (!(meta instanceof HTMLMetaElement)) {
-        return null;
-      }
-
-      const content = meta.content.trim();
-      return content || null;
-    }
-
-    function readTextContent(selector: string) {
-      const element = document.querySelector(selector);
-      const text = element?.textContent?.trim() ?? null;
-      return text || null;
-    }
-
-    function readHeadingText() {
-      const heading = document.querySelector("h1");
-      const text = heading?.textContent?.trim() ?? null;
-      return text || null;
-    }
-
-    function flattenStructuredData(payload: unknown): unknown[] {
-      if (!payload) {
         return [];
       }
 
-      if (Array.isArray(payload)) {
-        return payload.flatMap((entry) => flattenStructuredData(entry));
-      }
-
-      if (typeof payload === "object") {
-        const graph = (payload as { "@graph"?: unknown })["@graph"];
-
-        if (Array.isArray(graph)) {
-          return [payload, ...graph.flatMap((entry) => flattenStructuredData(entry))];
+      function normalizeStructuredDataType(value: unknown) {
+        if (Array.isArray(value)) {
+          return value.join(" ").toLowerCase();
         }
 
-        return [payload];
+        if (typeof value === "string") {
+          return value.toLowerCase();
+        }
+
+        return "";
       }
 
-      return [];
-    }
+      function parseJson(value: string | null) {
+        if (!value) {
+          return null;
+        }
 
-    function normalizeStructuredDataType(value: unknown) {
-      if (Array.isArray(value)) {
-        return value.join(" ").toLowerCase();
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
       }
 
-      if (typeof value === "string") {
-        return value.toLowerCase();
+      function parseNumber(value: string | null) {
+        if (!value) {
+          return null;
+        }
+
+        const nextValue = Number(value);
+        return Number.isFinite(nextValue) ? Math.round(nextValue) : null;
       }
 
-      return "";
-    }
+      function parseIsoDurationSeconds(value: string | null) {
+        if (!value) {
+          return null;
+        }
 
-    function parseJson(value: string | null) {
-      if (!value) {
-        return null;
+        const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+
+        if (!match) {
+          return null;
+        }
+
+        const hours = Number(match[1] ?? 0);
+        const minutes = Number(match[2] ?? 0);
+        const seconds = Number(match[3] ?? 0);
+
+        return hours * 3600 + minutes * 60 + seconds;
       }
 
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
+      function normalizeEntitlement(value: string | null): BandcampEntitlement {
+        if (!value) {
+          return "unknown";
+        }
 
-    function parseNumber(value: string | null) {
-      if (!value) {
-        return null;
-      }
+        const normalizedValue = value.trim().toLowerCase();
 
-      const nextValue = Number(value);
-      return Number.isFinite(nextValue) ? Math.round(nextValue) : null;
-    }
+        if (normalizedValue.includes("no-minimum")) {
+          return "no-minimum";
+        }
 
-    function parseIsoDurationSeconds(value: string | null) {
-      if (!value) {
-        return null;
-      }
+        if (normalizedValue.includes("redeem")) {
+          return "redeemable";
+        }
 
-      const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+        if (normalizedValue.includes("owned")) {
+          return "owned";
+        }
 
-      if (!match) {
-        return null;
-      }
+        if (
+          normalizedValue.includes("paid-only") ||
+          normalizedValue.includes("paid checkout") ||
+          normalizedValue.includes("purchase")
+        ) {
+          return "paid-only";
+        }
 
-      const hours = Number(match[1] ?? 0);
-      const minutes = Number(match[2] ?? 0);
-      const seconds = Number(match[3] ?? 0);
+        if (normalizedValue.includes("free")) {
+          return "free";
+        }
 
-      return hours * 3600 + minutes * 60 + seconds;
-    }
-
-    function normalizeEntitlement(value: string | null): BandcampEntitlement {
-      if (!value) {
         return "unknown";
       }
-
-      const normalizedValue = value.trim().toLowerCase();
-
-      if (normalizedValue.includes("no-minimum")) {
-        return "no-minimum";
-      }
-
-      if (normalizedValue.includes("redeem")) {
-        return "redeemable";
-      }
-
-      if (normalizedValue.includes("owned")) {
-        return "owned";
-      }
-
-      if (
-        normalizedValue.includes("paid-only") ||
-        normalizedValue.includes("paid checkout") ||
-        normalizedValue.includes("purchase")
-      ) {
-        return "paid-only";
-      }
-
-      if (normalizedValue.includes("free")) {
-        return "free";
-      }
-
-      return "unknown";
+    },
+    {
+      downloadLinkSelector: DOWNLOAD_LINK_SELECTOR,
+      downloadPageLinkSelector: DOWNLOAD_PAGE_LINK_SELECTOR
     }
-  }, DOWNLOAD_LINK_SELECTOR);
+  );
+}
+
+function toReleaseSnapshot(snapshot: ParsedBandcampPageSnapshot): ParsedReleaseSnapshot {
+  return {
+    artistName: snapshot.artistName,
+    downloadOptions: snapshot.downloadOptions,
+    durationSeconds: snapshot.durationSeconds,
+    entitlement: snapshot.entitlement,
+    providerTrackId: snapshot.providerTrackId,
+    providerUrl: snapshot.providerUrl,
+    title: snapshot.title
+  };
+}
+
+function mergeEntitlement(
+  releasePageEntitlement: BandcampEntitlement,
+  downloadPageEntitlement: BandcampEntitlement
+): BandcampEntitlement {
+  return releasePageEntitlement === "unknown"
+    ? downloadPageEntitlement
+    : releasePageEntitlement;
 }
 
 function isTrackMatch(track: CanonicalTrack, snapshot: ParsedReleaseSnapshot) {
