@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 
+import { BeatportReviewLane } from "./beatport-review-lane";
 import type {
   RunReportDetail,
   RunReportTrack,
@@ -123,9 +124,13 @@ export function RunReportScreen({ report }: { report: RunReportDetail }) {
             <span className="panel-caption">Reserved for paid fallback approvals</span>
           }
         >
-          <p className="report-empty-copy">
-            No paid fallback approvals are queued for this run yet.
-          </p>
+          {report.reviewQueue.length ? (
+            <BeatportReviewLane reviewQueue={report.reviewQueue} runId={report.id} />
+          ) : (
+            <p className="report-empty-copy">
+              No paid fallback approvals are queued for this run yet.
+            </p>
+          )}
         </Panel>
 
         <Panel
@@ -218,6 +223,28 @@ function renderTrackSource(track: RunReportTrack) {
     );
   }
 
+  if (track.reviewQueueEntry) {
+    const providerName = track.reviewQueueEntry.providerUrl ? (
+      <a className="inline-link" href={track.reviewQueueEntry.providerUrl}>
+        {track.reviewQueueEntry.providerName}
+      </a>
+    ) : (
+      track.reviewQueueEntry.providerName
+    );
+
+    return (
+      <div className="report-table-stack">
+        <p className="report-table-primary">{providerName}</p>
+        <p className="report-table-secondary">
+          {track.reviewQueueEntry.mixLabel ?? track.version ?? "Version pending"} •{" "}
+          {track.reviewQueueEntry.availableFormats
+            .map((format) => format.toUpperCase())
+            .join(" / ")}
+        </p>
+      </div>
+    );
+  }
+
   if (track.latestAttempt) {
     return (
       <div className="report-table-stack">
@@ -253,6 +280,17 @@ function renderTrackDecision(track: RunReportTrack) {
     );
   }
 
+  if (track.reviewQueueEntry) {
+    return (
+      <div className="report-table-stack">
+        <p className="report-table-primary">
+          {formatReviewDecision(track.reviewQueueEntry.status)}
+        </p>
+        <p className="report-table-secondary">{track.reviewQueueEntry.summary}</p>
+      </div>
+    );
+  }
+
   if (terminalTrackStatuses.has(track.status)) {
     return (
       <p className="report-empty-copy">
@@ -262,6 +300,21 @@ function renderTrackDecision(track: RunReportTrack) {
   }
 
   return <p className="report-empty-copy">Waiting on matching or packaging work.</p>;
+}
+
+function formatReviewDecision(
+  status: NonNullable<RunReportTrack["reviewQueueEntry"]>["status"]
+) {
+  switch (status) {
+    case "approved":
+      return "Approved for manual purchase";
+    case "purchased":
+      return "Marked purchased / completed";
+    case "rejected":
+      return "Rejected during paid review";
+    default:
+      return "Awaiting operator review";
+  }
 }
 
 function formatCount(value: number, singular: string, plural: string) {
