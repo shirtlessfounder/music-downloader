@@ -16,5 +16,8 @@ describe("HomeScreen", () => {
     expect(screen.getByRole("heading", { name: /recent runs/i })).toBeVisible();
     expect(screen.getByText(/downloads\.zip/i)).toBeVisible();
     expect(screen.getAllByText(/no runs yet/i)).toHaveLength(2);
+    expect(
+      screen.getByText(/sqlite persistence is active for new acquisition jobs/i)
+    ).toBeVisible();
   });
 });
