@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { maybeCreateFixtureRunFromPlaylistUrl } from "@/features/e2e/e2e-fixtures";
-import { createRunFromPlaylistUrl } from "@/features/ingestion/playlist-intake";
 import { PlaylistIntakeError } from "@/features/ingestion/playlist-intake-error";
 import { getRunStore } from "@/features/runs/run-store";
+import { submitLiveRunFromPlaylistUrl } from "@/features/runs/live-run-orchestrator";
 
 export async function GET() {
   return NextResponse.json(getRunStore().listRuns());
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json(await createRunFromPlaylistUrl(playlistUrl), {
+    return NextResponse.json(await submitLiveRunFromPlaylistUrl(playlistUrl), {
       status: 201
     });
   } catch (error) {

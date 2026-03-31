@@ -229,6 +229,7 @@ describe("createBandcampProvider", () => {
             fileExtension: "mp3",
             fileName: "warehouse-tool--320.mp3",
             format: "mp3",
+            localFilePath: expect.stringContaining("warehouse-tool--320.mp3"),
             sha256: createHash("sha256")
               .update("mp3 320 fixture payload\n")
               .digest("hex"),
@@ -323,6 +324,7 @@ describe("createBandcampProvider", () => {
             fileExtension: "mp3",
             fileName: "warehouse-tool--320.mp3",
             format: "mp3",
+            localFilePath: expect.stringContaining("warehouse-tool--320.mp3"),
             sha256: createHash("sha256")
               .update("mp3 320 fixture payload\n")
               .digest("hex"),
