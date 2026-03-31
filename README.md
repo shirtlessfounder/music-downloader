@@ -20,6 +20,14 @@ Local web app for authorized-source playlist acquisition, optimized for DJ and e
 npm install
 ```
 
+To enable authorized SoundCloud playlist ingestion through the official API,
+set these env vars before running the app:
+
+```bash
+export SOUNDCLOUD_CLIENT_ID=your-soundcloud-client-id
+export SOUNDCLOUD_CLIENT_SECRET=your-soundcloud-client-secret
+```
+
 ## Run
 
 ```bash

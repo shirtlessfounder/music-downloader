@@ -1,25 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { getRunStore, type PlaylistSource } from "@/features/runs/run-store";
-
-function detectPlaylistSource(playlistUrl: string): PlaylistSource | null {
-  try {
-    const parsedUrl = new URL(playlistUrl);
-    const hostname = parsedUrl.hostname.toLowerCase();
-
-    if (hostname.includes("spotify.com")) {
-      return "spotify";
-    }
-
-    if (hostname.includes("soundcloud.com")) {
-      return "soundcloud";
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
+import { createRunFromPlaylistUrl } from "@/features/ingestion/playlist-intake";
+import { PlaylistIntakeError } from "@/features/ingestion/playlist-intake-error";
+import { getRunStore } from "@/features/runs/run-store";
 
 export async function GET() {
   return NextResponse.json(getRunStore().listRuns());
@@ -38,16 +21,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const sourceType = detectPlaylistSource(playlistUrl);
+  try {
+    return NextResponse.json(await createRunFromPlaylistUrl(playlistUrl), {
+      status: 201
+    });
+  } catch (error) {
+    if (error instanceof PlaylistIntakeError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode }
+      );
+    }
 
-  if (!sourceType) {
-    return NextResponse.json(
-      { error: "Only Spotify and SoundCloud playlist URLs are supported." },
-      { status: 400 }
-    );
+    throw error;
   }
-
-  const run = getRunStore().createRun({ playlistUrl, sourceType });
-
-  return NextResponse.json(run, { status: 201 });
 }
