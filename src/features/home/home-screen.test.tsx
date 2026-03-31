@@ -20,4 +20,30 @@ describe("HomeScreen", () => {
       screen.getByText(/sqlite persistence is active for new acquisition jobs/i)
     ).toBeVisible();
   });
+
+  it("links recent runs into the run report detail flow", () => {
+    render(
+      <HomeScreen
+        initialRuns={[
+          {
+            artifactCount: 3,
+            createdAt: "2026-03-31T15:00:00.000Z",
+            id: "run-42",
+            playlistTitle: "Warehouse Drivers",
+            playlistUrl:
+              "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
+            resumeAfterStatus: null,
+            sourceType: "spotify",
+            status: "completed",
+            trackCount: 12,
+            updatedAt: "2026-03-31T15:15:00.000Z"
+          }
+        ]}
+      />
+    );
+
+    expect(
+      screen.getByRole("link", { name: /open report for warehouse drivers/i })
+    ).toHaveAttribute("href", "/runs/run-42");
+  });
 });

@@ -52,6 +52,10 @@ input {
   font: inherit;
 }
 
+a {
+  color: inherit;
+}
+
 .app-shell {
   width: min(1120px, calc(100% - 2rem));
   margin: 0 auto;
@@ -96,9 +100,12 @@ input {
 .status-list dd,
 .run-card dd,
 .run-card-url,
+.run-card-title,
 .run-card-source,
 .form-status,
-.panel-caption {
+.panel-caption,
+.report-empty-copy,
+.report-table-secondary {
   margin: 0;
   color: rgba(39, 32, 27, 0.74);
   line-height: 1.45;
@@ -262,6 +269,17 @@ input {
   gap: 0.55rem;
 }
 
+.inline-link {
+  width: fit-content;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(242, 186, 98, 0.28);
+}
+
+.inline-link:hover {
+  border-bottom-color: rgba(242, 186, 98, 0.68);
+}
+
 .status-badge,
 .file-badge {
   display: inline-flex;
@@ -355,6 +373,13 @@ input {
   text-transform: uppercase;
 }
 
+.run-card-title {
+  margin-top: 0.3rem;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 .run-card-url {
   margin-top: 0.35rem;
   color: var(--text);
@@ -377,6 +402,92 @@ input {
   margin: 0;
 }
 
+.run-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.report-track-panel {
+  grid-column: 1 / -1;
+}
+
+.report-summary-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.report-artifact-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.report-artifact-link {
+  text-decoration: none;
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.9rem 0.75rem;
+  border-top: 1px solid rgba(255, 243, 228, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-table th {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.report-track-cell,
+.report-table-stack {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.report-track-cell {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.report-track-position {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.2rem;
+  min-height: 2rem;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(255, 243, 228, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+}
+
+.report-table-primary {
+  margin: 0;
+  color: var(--text);
+}
+
 @keyframes lift-in {
   from {
     opacity: 0;
@@ -392,8 +503,10 @@ input {
 @media (max-width: 900px) {
   .hero,
   .dashboard-grid,
+  .report-grid,
   .status-list,
-  .run-card-stats {
+  .run-card-stats,
+  .report-summary-list {
     grid-template-columns: 1fr;
   }
 
@@ -404,6 +517,10 @@ input {
   .panel-header,
   .run-card-head {
     flex-direction: column;
+  }
+
+  .report-track-panel {
+    grid-column: auto;
   }
 }
 
@@ -424,5 +541,9 @@ input {
 
   .primary-button {
     width: 100%;
+  }
+
+  .run-card-actions {
+    justify-content: flex-start;
   }
 }

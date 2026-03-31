@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 
 import { FileBadge } from "@/components/ui/file-badge";
@@ -250,6 +251,9 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
                       <p className="run-card-source">
                         {formatSourceLabel(run.sourceType)}
                       </p>
+                      {run.playlistTitle ? (
+                        <p className="run-card-title">{run.playlistTitle}</p>
+                      ) : null}
                       <p className="run-card-url">{run.playlistUrl}</p>
                     </div>
                     <StatusBadge tone={getStatusTone(run.status)}>
@@ -271,6 +275,16 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
                       <dd>{run.resumeAfterStatus ?? "fresh run"}</dd>
                     </div>
                   </dl>
+
+                  <div className="run-card-actions">
+                    <Link
+                      className="inline-link"
+                      href={`/runs/${run.id}`}
+                      aria-label={`Open report for ${run.playlistTitle ?? run.playlistUrl}`}
+                    >
+                      Open report
+                    </Link>
+                  </div>
                 </article>
               ))}
             </div>
