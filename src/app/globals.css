@@ -94,6 +94,10 @@ input {
 .field-hint,
 .empty-state p,
 .status-list dd,
+.run-card dd,
+.run-card-url,
+.run-card-source,
+.form-status,
 .panel-caption {
   margin: 0;
   color: rgba(39, 32, 27, 0.74);
@@ -212,6 +216,10 @@ input {
   gap: 0.65rem;
 }
 
+.form-status {
+  font-size: 0.88rem;
+}
+
 .primary-button {
   display: inline-flex;
   align-items: center;
@@ -238,7 +246,8 @@ input {
 
 .field-hint,
 .empty-state p,
-.status-list dd {
+.status-list dd,
+.run-card dd {
   color: var(--text-soft);
 }
 
@@ -303,13 +312,69 @@ input {
   border-top: 1px solid rgba(255, 243, 228, 0.08);
 }
 
-.status-list dt {
+.status-list dt,
+.run-card-stats dt {
   margin: 0 0 0.3rem;
   color: var(--accent);
   font-size: 0.78rem;
   font-family: var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.run-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.run-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(255, 243, 228, 0.1);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.run-card-head {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.run-card-source,
+.run-card-url {
+  margin: 0;
+}
+
+.run-card-source {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.run-card-url {
+  margin-top: 0.35rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.run-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.run-card-stats div {
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 243, 228, 0.08);
+}
+
+.run-card dd {
+  margin: 0;
 }
 
 @keyframes lift-in {
@@ -327,7 +392,8 @@ input {
 @media (max-width: 900px) {
   .hero,
   .dashboard-grid,
-  .status-list {
+  .status-list,
+  .run-card-stats {
     grid-template-columns: 1fr;
   }
 
@@ -335,7 +401,8 @@ input {
     max-width: none;
   }
 
-  .panel-header {
+  .panel-header,
+  .run-card-head {
     flex-direction: column;
   }
 }
