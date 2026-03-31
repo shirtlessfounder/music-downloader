@@ -1,7 +1,6 @@
 import {
   buildAcquiredArtifactSourceNote,
-  buildMissedArtifactSourceNote,
-  generateRunArtifacts
+  buildMissedArtifactSourceNote
 } from "@/features/artifacts/run-artifacts";
 import {
   matchTrackCandidates,
@@ -21,6 +20,7 @@ import {
   type RunTrack
 } from "@/features/runs/run-store";
 import { canonicalizeTrack } from "@/features/tracks/canonical-track";
+import { finalizeTerminalRun } from "./run-finalization";
 
 import { createRunFromPlaylistUrl } from "../ingestion/playlist-intake";
 
@@ -68,18 +68,10 @@ export async function submitLiveRunFromPlaylistUrl(
       return runStore.transitionRunStatus(runId, "failed");
     }
 
-    if (resolvedRun.tracks.every((track) => track.status === "acquired")) {
-      runStore.transitionRunStatus(runId, "packaging");
-      await generateRunArtifacts({
-        runId,
-        runStore,
-        workspaceRoot: dependencies.workspaceRoot
-      });
-
-      return runStore.transitionRunStatus(runId, "completed");
-    }
-
-    return resolvedRun;
+    return finalizeTerminalRun(runId, {
+      runStore,
+      workspaceRoot: dependencies.workspaceRoot
+    });
   } catch (error) {
     if (runId) {
       failRunIfPossible(runStore, runId);

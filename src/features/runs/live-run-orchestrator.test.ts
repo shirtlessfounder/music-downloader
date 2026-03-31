@@ -273,7 +273,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     }
   });
 
-  it("persists unresolved automatic misses without falsely completing or packaging the run", async () => {
+  it("packages mixed acquired and missed runs once every track reaches a terminal status", async () => {
     const tempWorkspace = createTempWorkspace();
     const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });
 
@@ -380,13 +380,18 @@ describe("submitLiveRunFromPlaylistUrl", () => {
         }
       );
 
-      expect(run.status).toBe("matching");
-      expect(run.artifacts).toEqual([]);
+      expect(run.status).toBe("completed");
+      expect([...run.artifacts.map((artifact) => artifact.kind)].sort()).toEqual([
+        "downloads-zip",
+        "manifest-json",
+        "misses-txt"
+      ]);
       expect(run.tracks.map((track) => [track.sourcePosition, track.status])).toEqual([
         [1, "acquired"],
         [2, "missed"]
       ]);
 
+      const persistedRun = runStore.getRun(run.id);
       const attempts = runStore.listRunTrackAttempts(run.id);
       const latestMissAttempt = attempts.find(
         (attempt) => attempt.providerKey === "track-matcher"
@@ -405,6 +410,31 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           })
         })
       );
+
+      const manifestArtifact = persistedRun?.artifacts.find(
+        (artifact) => artifact.kind === "manifest-json"
+      );
+
+      expect(manifestArtifact).toBeDefined();
+
+      const manifest = JSON.parse(
+        readFileSync(
+          path.join(tempWorkspace.workspaceRoot, manifestArtifact?.relativePath ?? ""),
+          "utf8"
+        )
+      ) as {
+        summary: {
+          acquiredCount: number;
+          missCount: number;
+          trackCount: number;
+        };
+      };
+
+      expect(manifest.summary).toEqual({
+        acquiredCount: 1,
+        missCount: 1,
+        trackCount: 2
+      });
     } finally {
       runStore.close();
       tempWorkspace.cleanup();

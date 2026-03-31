@@ -4,6 +4,7 @@ import {
   getRunStore,
   type RunTrackReviewStatus
 } from "@/features/runs/run-store";
+import { finalizeTerminalRun } from "@/features/runs/run-finalization";
 
 type RouteContext = {
   params: Promise<{
@@ -47,9 +48,11 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    return NextResponse.json(
-      runStore.transitionRunTrackReviewStatus(reviewId, nextStatus)
-    );
+    const updatedReview = runStore.transitionRunTrackReviewStatus(reviewId, nextStatus);
+
+    await finalizeTerminalRun(runId, { runStore });
+
+    return NextResponse.json(updatedReview);
   } catch (error) {
     return NextResponse.json(
       {
