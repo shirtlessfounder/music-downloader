@@ -61,7 +61,25 @@ npm run test
 npm run test:e2e
 ```
 
+## Local Verification
+
+`npm run test:e2e` starts the app with an isolated `.e2e/runtime` workspace and
+deterministic local fixtures for the end-to-end flow. The Playwright coverage
+exercises:
+
+- playlist submission through the real intake form
+- completed run reports with `downloads.zip`, `manifest.json`, and `misses.txt`
+- miss-heavy reports with Beatport review-lane visibility
+- resumability after a persisted in-flight run is re-opened
+
+No live provider credentials are required for that verification path, and the
+fixtures stay within authorized-source-only scenarios. The normal `npm run dev`
+path still uses real Spotify and SoundCloud credentials when you want to test
+live playlist intake locally.
+
 ## Notes
 
-- The landing page currently provides the shared shell, form controls, and persisted recent-runs area for later tasks.
-- Background jobs, provider matching, manifests, misses, and artifact packaging land in later issues.
+- The app persists runs in local SQLite and renders run-report detail pages from
+  that shared store.
+- End-to-end verification uses fixture-backed runs so local coverage can stay
+  deterministic without introducing unauthorized acquisition behavior.
