@@ -7,7 +7,9 @@ Local web app for authorized-source playlist acquisition, optimized for DJ and e
 - Local-only operator workflow
 - Authorized-source acquisition only
 - No stream-ripping, bypass, or unauthorized-source behavior
-- Current state: app shell with persisted Spotify and SoundCloud playlist intake
+- Current state: live Spotify and SoundCloud playlist intake, automatic
+  authorized-source matching/acquisition, packaged run artifacts, and Beatport
+  paid-review queueing
 
 ## Requirements
 
@@ -20,9 +22,13 @@ Local web app for authorized-source playlist acquisition, optimized for DJ and e
 npm install
 ```
 
+## Live Credentials
+
+The normal local operator runtime (`npm run dev`) uses live playlist intake and
+therefore expects authorized Spotify and SoundCloud API credentials.
+
 To enable authorized Spotify playlist ingestion through the Spotify Web API
-client-credentials flow,
-set these Spotify env vars before running the app:
+client-credentials flow, set these Spotify env vars before starting the app:
 
 ```bash
 export SPOTIFY_CLIENT_ID=your-spotify-client-id
@@ -37,7 +43,7 @@ export SPOTIFY_MARKET=US
 ```
 
 To enable authorized SoundCloud playlist ingestion through the official API,
-set these env vars before running the app:
+set these env vars before starting the app:
 
 ```bash
 export SOUNDCLOUD_CLIENT_ID=your-soundcloud-client-id
@@ -63,23 +69,25 @@ npm run test:e2e
 
 ## Local Verification
 
-`npm run test:e2e` starts the app with an isolated `.e2e/runtime` workspace and
-deterministic local fixtures for the end-to-end flow. The Playwright coverage
+`npm run test:e2e` starts the app with `MUSIC_DOWNLOADER_E2E_FIXTURES=1`, an
+isolated `.e2e/runtime` workspace, and deterministic fixture-mode playlist and
+provider seams. Playwright still submits playlists through `/api/runs` and the
+shared live orchestrator; it does not pre-seed completed runs. The coverage
 exercises:
 
 - playlist submission through the real intake form
 - completed run reports with `downloads.zip`, `manifest.json`, and `misses.txt`
-- miss-heavy reports with Beatport review-lane visibility
+- Beatport review-lane visibility for paid fallback handoff
 - resumability after a persisted in-flight run is re-opened
 
-No live provider credentials are required for that verification path, and the
-fixtures stay within authorized-source-only scenarios. The normal `npm run dev`
-path still uses real Spotify and SoundCloud credentials when you want to test
-live playlist intake locally.
+No live Spotify or SoundCloud credentials are required for that verification
+path, and the fixtures stay within authorized-source-only scenarios. Use
+`npm run dev` with the env vars above when you want to test live playlist
+intake locally.
 
 ## Notes
 
 - The app persists runs in local SQLite and renders run-report detail pages from
   that shared store.
-- End-to-end verification uses fixture-backed runs so local coverage can stay
-  deterministic without introducing unauthorized acquisition behavior.
+- End-to-end verification swaps in deterministic fixture-mode intake/provider
+  seams while keeping the `/api/runs` orchestration path intact.

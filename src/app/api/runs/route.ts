@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { maybeCreateFixtureRunFromPlaylistUrl } from "@/features/e2e/e2e-fixtures";
 import { PlaylistIntakeError } from "@/features/ingestion/playlist-intake-error";
 import { getRunStore } from "@/features/runs/run-store";
 import { submitLiveRunFromPlaylistUrl } from "@/features/runs/live-run-orchestrator";
@@ -23,14 +22,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const fixtureRun = await maybeCreateFixtureRunFromPlaylistUrl(playlistUrl);
-
-    if (fixtureRun) {
-      return NextResponse.json(fixtureRun, {
-        status: 201
-      });
-    }
-
     return NextResponse.json(await submitLiveRunFromPlaylistUrl(playlistUrl), {
       status: 201
     });

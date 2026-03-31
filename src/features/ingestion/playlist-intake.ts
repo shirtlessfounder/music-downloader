@@ -1,3 +1,4 @@
+import { resolveE2eFixturePlaylistSnapshot } from "@/features/e2e/e2e-fixtures";
 import { getRunStore, type RunDetail, type RunStore } from "@/features/runs/run-store";
 
 import { PlaylistIntakeError } from "./playlist-intake-error";
@@ -42,8 +43,10 @@ export async function createRunFromPlaylistUrl(
   }
 
   const runStore = dependencies.runStore ?? getRunStore();
+  const fixtureSnapshot = resolveE2eFixturePlaylistSnapshot(playlistUrl);
   const snapshot =
-    sourceType === "spotify"
+    fixtureSnapshot ??
+    (sourceType === "spotify"
       ? await (
           dependencies.fetchSpotifyPlaylistSnapshot ??
           fetchSpotifyPlaylistSnapshot
@@ -51,7 +54,7 @@ export async function createRunFromPlaylistUrl(
       : await (
           dependencies.fetchSoundCloudPlaylistSnapshot ??
           fetchSoundCloudPlaylistSnapshot
-        )(playlistUrl);
+        )(playlistUrl));
   const run = runStore.createRun({
     playlistTitle: snapshot.playlistTitle,
     playlistUrl: snapshot.playlistUrl,

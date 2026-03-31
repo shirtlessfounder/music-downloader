@@ -33,7 +33,7 @@ test.beforeEach(async ({ request }) => {
   await resetHarness(request);
 });
 
-test("submits a deterministic fixture playlist and exposes completed artifacts in the run report", async ({
+test("submits a deterministic fixture-mode playlist through the live orchestration path and exposes completed artifacts", async ({
   page
 }) => {
   await page.goto("/");
@@ -73,7 +73,7 @@ test("submits a deterministic fixture playlist and exposes completed artifacts i
   });
 });
 
-test("covers a miss-heavy report with Beatport review visibility via deterministic fixtures", async ({
+test("covers a Beatport review-lane run via deterministic fixture mode through the live orchestration path", async ({
   page
 }) => {
   await page.goto("/");
@@ -98,7 +98,7 @@ test("covers a miss-heavy report with Beatport review visibility via determinist
       name: /approve beatport candidate for dj sealer - warehouse tool/i
     })
   ).toBeVisible();
-  await expect(page.getByText(/paid-review-rejected/i)).toBeVisible();
+  await expect(page.getByText(/awaiting operator review/i).first()).toBeVisible();
 });
 
 test("shows persisted resume metadata after the run store is restarted", async ({
