@@ -1,6 +1,6 @@
 # Provider Research Registry
 
-Reviewed on `2026-03-30`.
+Reviewed on `2026-03-31`.
 
 ## Source Of Truth
 
@@ -8,15 +8,33 @@ Reviewed on `2026-03-30`.
 - This file is the machine-readable seed for later provider tasks.
 - Update the registry in place by appending or editing source objects; do not replace it with a spreadsheet or a prose-only list.
 
+## Normalized Fields
+
+Every source entry must keep these fields populated so later planner and worker tasks can filter and order providers without prose parsing:
+
+| Field | Meaning | Allowed values |
+| --- | --- | --- |
+| `authorizationBasis` | Why the source is an authorized acquisition path | `uploader-enabled-download`, `rights-holder-storefront`, `purchase-entitlement` |
+| `accessTier` | Whether the source is free, free-or-owned, or paid | `free`, `free-or-owned`, `paid` |
+| `integrationSurface` | Whether the source can be treated as native/direct or requires browser mediation | `native-direct`, `browser-mediated` |
+| `loginRequirement` | Whether credentials are needed for the intended acquisition path | `not-required`, `conditional`, `required` |
+| `sessionRequirement` | Whether the workflow depends on an authenticated browser/session layer | `not-required`, `conditional`, `required` |
+| `stability` | How stable the acquisition surface is for sequencing decisions | `stable`, `variable`, `fragile` |
+
+Keep the existing narrative fields such as `scopeRationale`, `authorizationRationale`, `acquisitionMode`, `automationApproach`, and `notableRisks`; the normalized fields are additive metadata for machine filtering.
+
 ## How Later Provider Tasks Should Use It
 
 1. Read the registry before opening or implementing any provider issue.
 2. Only implement sources whose `scopeDecision` is `in-scope-with-constraints` or `required-fallback`.
-3. Order work by `implementationBucket`, then `priorityRank`.
-4. `free-auto` sources come first and should be the only automatic acquisition wave.
-5. `paid-review-queue` is reserved for Beatport and must remain the last-resort paid fallback with one aggregated review queue per run.
-6. `defer` sources stay researched but unimplemented unless the product rules change.
-7. Never create providers for anything covered by `orderingPolicy.disallowedApproaches`, especially stream-ripping, preview capture, DRM bypass, or unlicensed mirrors.
+3. Filter on `accessTier` and `authorizationBasis` first: free or free-or-owned authorized flows land before paid sources, and paid expansions beyond Beatport still require a product decision.
+4. Prefer `integrationSurface: native-direct` ahead of `browser-mediated` when priorities are otherwise equal.
+5. Prefer `stability: stable` ahead of `variable` or `fragile` within the same tier.
+6. Use `implementationBucket`, then `priorityRank`, as the final deterministic ordering after the normalized filters above.
+7. `free-auto` sources come first and should be the only automatic acquisition wave.
+8. `paid-review-queue` is reserved for Beatport and must remain the last-resort paid fallback with one aggregated review queue per run.
+9. `defer` sources stay researched but unimplemented unless the product rules change.
+10. Never create providers for anything covered by `orderingPolicy.disallowedApproaches`, especially stream-ripping, preview capture, DRM bypass, or unlicensed mirrors.
 
 ## Current Seed Decisions
 
@@ -31,5 +49,6 @@ Reviewed on `2026-03-30`.
 ## Extension Rules
 
 - Preserve `officialReferences` whenever you change a source decision.
+- Keep every normalized metadata field populated when you add or edit a source entry.
 - Add new sources as new objects so later code can diff and sort them without reformatting the whole file.
 - Keep `scopeRationale` concrete enough that another worker can justify why a provider is in, deferred, or excluded without reopening the original research.
