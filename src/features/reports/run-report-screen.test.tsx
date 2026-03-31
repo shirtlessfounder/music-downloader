@@ -57,6 +57,7 @@ function buildRunningReport() {
     missCount: 0,
     playlistTitle: "Warehouse Warmup",
     playlistUrl: "https://soundcloud.com/sets/warehouse-warmup",
+    reviewQueue: [],
     resumeAfterStatus: null,
     selectedSourceCount: 0,
     sourceType: "soundcloud",
@@ -114,6 +115,7 @@ function buildCompletedReport() {
     completedTrackCount: 2,
     id: "run-complete",
     playlistTitle: "Warehouse Drivers",
+    reviewQueue: [],
     selectedSourceCount: 1,
     status: "completed",
     tracks: [

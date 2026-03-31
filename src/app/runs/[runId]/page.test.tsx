@@ -9,6 +9,19 @@ import {
   buildMissedArtifactSourceNote
 } from "@/features/artifacts/run-artifacts";
 
+vi.mock("next/navigation", async () => {
+  const actual = await vi.importActual<typeof import("next/navigation")>(
+    "next/navigation"
+  );
+
+  return {
+    ...actual,
+    useRouter: () => ({
+      refresh: vi.fn()
+    })
+  };
+});
+
 async function withTempDatabase(callback: (databasePath: string) => Promise<void>) {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), "music-downloader-report-"));
   const databasePath = path.join(tempDirectory, "music-downloader.sqlite");
@@ -140,6 +153,108 @@ describe("RunReportPage", () => {
       expect(
         screen.getByText(/no paid fallback approvals are queued for this run yet/i)
       ).toBeVisible();
+    });
+  });
+
+  it("renders the persisted Beatport approval queue and review controls", async () => {
+    await withTempDatabase(async () => {
+      vi.resetModules();
+
+      const runStoreModule = await import("@/features/runs/run-store");
+      const store = runStoreModule.getRunStore();
+      const run = store.createRun({
+        playlistTitle: "Paid Queue Showcase",
+        playlistUrl: "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
+        sourceType: "spotify"
+      });
+      const tracks = store.replaceRunTracks(run.id, [
+        {
+          artist: "Anyma",
+          sourcePosition: 1,
+          title: "Consciousness",
+          version: "Extended Mix"
+        },
+        {
+          artist: "Mau P",
+          sourcePosition: 2,
+          title: "Drugs From Amsterdam"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+
+      const queuedReview = store.queueRunTrackReview({
+        authorizationBasis: "purchase-entitlement",
+        availableFormats: ["mp3", "wav"],
+        candidateId: "beatport-queue-1",
+        mixLabel: "Extended Mix",
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/consciousness/queue-1",
+        queueName: "beatport-review",
+        runTrackId: tracks[0].id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+      const purchasedReview = store.queueRunTrackReview({
+        authorizationBasis: "purchase-entitlement",
+        availableFormats: ["mp3"],
+        candidateId: "beatport-queue-2",
+        mixLabel: null,
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/drugs-from-amsterdam/queue-2",
+        queueName: "beatport-review",
+        runTrackId: tracks[1].id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+
+      store.transitionRunTrackReviewStatus(queuedReview.id, "approved");
+      store.transitionRunTrackReviewStatus(purchasedReview.id, "approved");
+      store.transitionRunTrackReviewStatus(purchasedReview.id, "purchased");
+
+      const pageModule = await import("./page");
+
+      render(
+        await pageModule.default({
+          params: Promise.resolve({ runId: run.id })
+        })
+      );
+
+      expect(screen.getByRole("heading", { name: /review lane/i })).toBeVisible();
+      expect(
+        screen.getAllByText(/queued after all automatic free-source providers missed/i)
+          .length
+      ).toBeGreaterThan(0);
+      expect(screen.getAllByText(/approved for manual purchase/i).length).toBeGreaterThan(
+        0
+      );
+      expect(
+        screen.getAllByText(/marked purchased \/ completed/i).length
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getByRole("button", {
+          name: /approve beatport candidate for anyma - consciousness/i
+        })
+      ).toBeVisible();
+      expect(
+        screen.getByRole("button", {
+          name: /reject beatport candidate for anyma - consciousness/i
+        })
+      ).toBeVisible();
+      expect(
+        screen.getByRole("button", {
+          name: /mark beatport candidate purchased for anyma - consciousness/i
+        })
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("button", {
+          name: /approve beatport candidate for mau p - drugs from amsterdam/i
+        })
+      ).not.toBeInTheDocument();
+      expect(queuedReview.candidateId).toBe("beatport-queue-1");
     });
   });
 });
