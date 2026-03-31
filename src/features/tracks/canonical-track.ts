@@ -91,6 +91,14 @@ export type TrackDecision =
       details: string;
     };
 
+export type TrackAcceptedDecision = Extract<TrackDecision, { outcome: "accepted" }>;
+export type TrackRejectedDecision = Extract<TrackDecision, { outcome: "rejected" }>;
+export type TrackMissDecision = Extract<TrackDecision, { outcome: "miss" }>;
+
+export type TrackCandidateDecision =
+  | TrackAcceptedDecision
+  | TrackRejectedDecision;
+
 const FEATURED_ARTIST_PATTERN = /\s+(?:feat\.?|ft\.?|featuring)\s+(.+)$/i;
 const TRAILING_LABEL_PATTERN = /\s*[\[(]([^[\]()]+)[\])]\s*$/;
 const CLOCK_DURATION_PATTERN = /^\d{1,2}:\d{2}(?::\d{2})?$/;
@@ -205,7 +213,7 @@ export function parseDurationSeconds(value: number | string | null): number | nu
 export function evaluateTrackCandidate(
   track: CanonicalTrack,
   policy = DEFAULT_TRACK_SELECTION_POLICY
-): TrackDecision {
+): TrackCandidateDecision {
   const selectedFormat = selectPreferredFormat(
     track.availableFormats,
     policy.preferredFormats
@@ -276,7 +284,7 @@ export function evaluateTrackCandidate(
   };
 }
 
-export function buildMissDecision(reason: TrackMissReason): TrackDecision {
+export function buildMissDecision(reason: TrackMissReason): TrackMissDecision {
   return {
     outcome: "miss",
     reason,
