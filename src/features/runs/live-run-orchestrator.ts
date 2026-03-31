@@ -62,6 +62,10 @@ export async function submitLiveRunFromPlaylistUrl(
 
     const resolvedRun = requireRun(runStore, runId);
 
+    if (resolvedRun.tracks.some((track) => track.status === "failed")) {
+      return runStore.transitionRunStatus(runId, "failed");
+    }
+
     if (resolvedRun.tracks.every((track) => track.status === "acquired")) {
       runStore.transitionRunStatus(runId, "packaging");
       await generateRunArtifacts({
