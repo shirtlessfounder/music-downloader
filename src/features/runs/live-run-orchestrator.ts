@@ -11,7 +11,8 @@ import { createLiveProviderRegistry } from "@/features/providers/live-provider-r
 import type {
   AutomaticProviderDefinition,
   ProviderAcquiredResult,
-  ProviderRegistry
+  ProviderRegistry,
+  ReviewQueueProviderDefinition
 } from "@/features/providers/provider-registry";
 import {
   getRunStore,
@@ -25,7 +26,7 @@ import { createRunFromPlaylistUrl } from "../ingestion/playlist-intake";
 
 type SubmitLiveRunDependencies = {
   createRunFromPlaylistUrl?: typeof createRunFromPlaylistUrl;
-  providerRegistry?: Pick<ProviderRegistry, "listAutomatic">;
+  providerRegistry?: Pick<ProviderRegistry, "listAutomatic" | "listReviewQueue">;
   runStore?: RunStore;
   workspaceRoot?: string;
 };
@@ -55,6 +56,7 @@ export async function submitLiveRunFromPlaylistUrl(
     for (const track of hydratedRun.tracks) {
       await resolveTrackWithAutomaticProviders({
         providers: providerRegistry.listAutomatic(),
+        reviewProviders: providerRegistry.listReviewQueue(),
         runStore,
         track
       });
@@ -89,6 +91,7 @@ export async function submitLiveRunFromPlaylistUrl(
 
 async function resolveTrackWithAutomaticProviders(input: {
   providers: AutomaticProviderDefinition[];
+  reviewProviders: ReviewQueueProviderDefinition[];
   runStore: RunStore;
   track: RunTrack;
 }) {
@@ -181,13 +184,29 @@ async function resolveTrackWithAutomaticProviders(input: {
     return;
   }
 
+  const reviewQueueOutcome = await resolveTrackWithReviewProviders({
+    canonicalTrack,
+    providers: input.reviewProviders,
+    runStore: input.runStore,
+    track: input.track
+  });
+
+  if (reviewQueueOutcome === "queued") {
+    return;
+  }
+
+  if (reviewQueueOutcome === "failed") {
+    input.runStore.updateRunTrackStatus(input.track.id, "failed");
+    return;
+  }
+
   input.runStore.updateRunTrackStatus(input.track.id, "missed");
   input.runStore.recordAcquisitionAttempt({
     note: JSON.stringify(
       buildMissedArtifactSourceNote({
         miss: {
           detail:
-            "All automatic authorized-source providers were exhausted without selecting an eligible acquisition candidate.",
+            "All automatic and paid-review authorized-source providers were exhausted without selecting an eligible acquisition candidate.",
           providerId: "track-matcher",
           providerName: "Track matcher",
           reason: "no-authorized-source-match"
@@ -198,6 +217,101 @@ async function resolveTrackWithAutomaticProviders(input: {
     providerKey: "track-matcher",
     runTrackId: input.track.id
   });
+}
+
+async function resolveTrackWithReviewProviders(input: {
+  canonicalTrack: ReturnType<typeof canonicalizeTrack>;
+  providers: ReviewQueueProviderDefinition[];
+  runStore: RunStore;
+  track: RunTrack;
+}) {
+  let hasRetryableFailure = false;
+
+  for (const provider of input.providers) {
+    const searchResult = await provider.search({ track: input.canonicalTrack });
+
+    if (searchResult.outcome === "miss") {
+      input.runStore.recordAcquisitionAttempt({
+        note: searchResult.miss.detail,
+        outcome: "skipped",
+        providerKey: provider.id,
+        runTrackId: input.track.id
+      });
+      continue;
+    }
+
+    if (searchResult.outcome === "rejected") {
+      input.runStore.recordAcquisitionAttempt({
+        note: searchResult.rejection.detail,
+        outcome: searchResult.rejection.retryable ? "failed" : "skipped",
+        providerKey: provider.id,
+        runTrackId: input.track.id
+      });
+      hasRetryableFailure ||= searchResult.rejection.retryable;
+      continue;
+    }
+
+    const matchResult = matchTrackCandidates({
+      candidates: searchResult.candidates,
+      track: input.canonicalTrack
+    });
+
+    if (matchResult.outcome === "miss") {
+      input.runStore.recordAcquisitionAttempt({
+        note: matchResult.miss.details,
+        outcome: "skipped",
+        providerKey: provider.id,
+        runTrackId: input.track.id
+      });
+      continue;
+    }
+
+    const reviewQueueResult = await provider.queueForReview({
+      candidate: matchResult.selected.candidate,
+      track: input.canonicalTrack
+    });
+
+    if (reviewQueueResult.outcome === "queued-for-review") {
+      input.runStore.queueRunTrackReview({
+        authorizationBasis: reviewQueueResult.candidate.authorizationBasis,
+        availableFormats: [...reviewQueueResult.candidate.availableFormats],
+        candidateId: reviewQueueResult.candidate.candidateId,
+        mixLabel: reviewQueueResult.candidate.mixLabel,
+        priceTier: reviewQueueResult.candidate.priceTier,
+        providerKey: reviewQueueResult.candidate.providerId,
+        providerName: reviewQueueResult.candidate.providerName,
+        providerUrl:
+          reviewQueueResult.candidate.provenance.providerUrl ??
+          reviewQueueResult.candidate.provenance.sourcePageUrl ??
+          null,
+        queueName: reviewQueueResult.review.queueName,
+        runTrackId: input.track.id,
+        summary: reviewQueueResult.review.summary
+      });
+
+      return "queued" as const;
+    }
+
+    if (reviewQueueResult.outcome === "miss") {
+      input.runStore.recordAcquisitionAttempt({
+        note: reviewQueueResult.miss.detail,
+        outcome: "skipped",
+        providerKey: provider.id,
+        runTrackId: input.track.id
+      });
+      continue;
+    }
+
+    input.runStore.recordAcquisitionAttempt({
+      note: reviewQueueResult.rejection.detail,
+      outcome: reviewQueueResult.rejection.retryable ? "failed" : "skipped",
+      providerKey: provider.id,
+      runTrackId: input.track.id
+    });
+    hasRetryableFailure ||= reviewQueueResult.rejection.retryable;
+  }
+
+  return hasRetryableFailure ? ("failed" as const) : ("missed" as const);
 }
 
 function persistAcquiredTrack(input: {

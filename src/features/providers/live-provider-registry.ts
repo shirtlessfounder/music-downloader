@@ -3,6 +3,7 @@ import path from "node:path";
 import { BrowserSessionService } from "@/features/browser/browser-session-service";
 
 import { createBandcampProvider } from "./bandcamp";
+import { createBeatportProvider } from "./beatport";
 import { ProviderRegistry } from "./provider-registry";
 import { createSoundCloudDirectDownloadsProvider } from "./soundcloud-direct-downloads";
 
@@ -19,7 +20,8 @@ export function createLiveProviderRegistry(
 
   return new ProviderRegistry([
     createSoundCloudDirectDownloadsProvider({ browserSessionService }),
-    createBandcampProvider({ browserSessionService })
+    createBandcampProvider({ browserSessionService }),
+    createBeatportProvider()
   ]);
 }
 
