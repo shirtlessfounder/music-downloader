@@ -8,7 +8,7 @@ Read these files before planning or implementing work in this repo:
 Repo purpose:
 
 - local web app
-- authorized-source playlist acquisition only
+- provider-based playlist acquisition only
 - DJ/electronic workflow optimized
 
 Architecture defaults:

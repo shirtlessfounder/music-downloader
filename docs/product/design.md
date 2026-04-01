@@ -16,7 +16,7 @@ Build a local web app that:
 
 ## Core Rules
 
-- authorized download sources only
+- supported provider flows only
 - optimize for DJ/electronic sources first
 - modular provider architecture
 - free sources run automatically
