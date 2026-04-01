@@ -26,6 +26,14 @@ describe("ProviderRegistry", () => {
             reason: "no-search-results",
             trackMissReason: "no-authorized-source-match"
           }),
+        acquirePurchased: async ({ candidate }) =>
+          buildProviderRejectedResult({
+            candidate,
+            detail: "Fixture provider is not wired to acquire owned downloads in tests.",
+            providerId: "beatport",
+            providerName: "Beatport",
+            reason: "provider-error"
+          }),
         queueForReview: async ({ candidate }) => ({
           outcome: "queued-for-review",
           candidate,

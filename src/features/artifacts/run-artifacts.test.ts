@@ -16,8 +16,7 @@ import { createRunStore } from "@/features/runs/run-store";
 import {
   buildAcquiredArtifactSourceNote,
   buildMissedArtifactSourceNote,
-  generateRunArtifacts,
-  RunArtifactsNotReadyError
+  generateRunArtifacts
 } from "./run-artifacts";
 
 function createTempWorkspace() {
@@ -153,7 +152,7 @@ describe("generateRunArtifacts", () => {
     }
   });
 
-  it("keeps purchased Beatport reviews out of packaging until an owned file is imported", async () => {
+  it("packages purchased Beatport reviews after the owned artifact is acquired", async () => {
     const tempWorkspace = createTempWorkspace();
     const store = createRunStore({ databasePath: tempWorkspace.databasePath });
 
@@ -190,32 +189,78 @@ describe("generateRunArtifacts", () => {
       });
 
       store.transitionRunTrackReviewStatus(review.id, "approved");
-      store.transitionRunTrackReviewStatus(review.id, "purchased");
+      const downloadDirectory = path.join(tempWorkspace.workspaceRoot, "downloads");
+      const acquiredFilePath = path.join(downloadDirectory, "drugs-from-amsterdam.mp3");
+      const acquiredFileBody = Buffer.from("owned beatport payload\n", "utf8");
+
+      mkdirSync(downloadDirectory, { recursive: true });
+      writeFileSync(acquiredFilePath, acquiredFileBody);
+
+      store.completePurchasedRunTrackReview({
+        artifact: {
+          contentType: "audio/mpeg",
+          fileExtension: "mp3",
+          fileName: "drugs-from-amsterdam.mp3",
+          format: "mp3",
+          localFilePath: acquiredFilePath,
+          sha256: createSha256(acquiredFileBody),
+          sizeBytes: acquiredFileBody.byteLength
+        },
+        reviewId: review.id
+      });
 
       expect(store.getRun(run.id)).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "awaiting-approval"
+          status: "packaging"
         })
       );
-      expect(
-        store
-          .getRun(run.id)
-          ?.tracks.map((candidate) => [candidate.sourcePosition, candidate.status])
-      ).toEqual([[1, "awaiting-approval"]]);
+      expect(store.getRun(run.id)?.tracks.map((candidate) => [candidate.sourcePosition, candidate.status])).toEqual(
+        [[1, "acquired"]]
+      );
 
-      await expect(
-        generateRunArtifacts({
-          runId: run.id,
-          runStore: store,
-          workspaceRoot: tempWorkspace.workspaceRoot
-        })
-      ).rejects.toThrowError(
-        new RunArtifactsNotReadyError(
-          run.id,
-          `Run track "${track.id}" is still "awaiting-approval" and cannot be packaged yet.`
-        )
+      const generated = await generateRunArtifacts({
+        runId: run.id,
+        runStore: store,
+        workspaceRoot: tempWorkspace.workspaceRoot
+      });
+
+      expect(generated.manifest.summary).toEqual({
+        acquiredCount: 1,
+        missCount: 0,
+        trackCount: 1
+      });
+      expect(generated.manifest.tracks).toMatchObject([
+        {
+          artist: "Mau P",
+          miss: null,
+          outcome: "acquired",
+          selection: {
+            artifactFormat: "mp3",
+            providerId: "beatport",
+            providerName: "Beatport",
+            providerUrl:
+              "https://www.beatport.com/track/drugs-from-amsterdam/purchased-1",
+            selectedFormat: "mp3",
+            selectedReason: "accepted-base-version-fallback",
+            zipEntryName: "001 - Mau P - Drugs From Amsterdam.mp3"
+          },
+          sourcePosition: 1,
+          title: "Drugs From Amsterdam",
+          version: null
+        }
+      ]);
+
+      const zipArtifact = generated.artifacts.find(
+        (artifact) => artifact.kind === "downloads-zip"
       );
+
+      expect(zipArtifact).toBeDefined();
+      expect(
+        readStoredZipEntries(zipArtifact?.absolutePath ?? "").get(
+          "001 - Mau P - Drugs From Amsterdam.mp3"
+        )
+      ).toEqual(acquiredFileBody);
     } finally {
       store.close();
       tempWorkspace.cleanup();

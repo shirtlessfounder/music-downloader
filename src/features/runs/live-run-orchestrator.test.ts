@@ -19,7 +19,10 @@ import {
 } from "@/features/providers/provider-registry";
 import { createRunStore, type RunStore, type RunTrack } from "@/features/runs/run-store";
 
-import { submitLiveRunFromPlaylistUrl } from "./live-run-orchestrator";
+import {
+  executeQueuedRun,
+  submitLiveRunFromPlaylistUrl
+} from "./live-run-orchestrator";
 
 function createTempWorkspace() {
   const workspaceRoot = mkdtempSync(
@@ -100,6 +103,120 @@ function buildMatchingCandidate(
 }
 
 describe("submitLiveRunFromPlaylistUrl", () => {
+  it("resumes interrupted matching runs from persisted queued state", async () => {
+    const tempWorkspace = createTempWorkspace();
+    let initialRunStore: RunStore | undefined;
+    let resumedRunStore: RunStore | undefined;
+
+    const bandcampProvider = defineAutomaticProvider({
+      id: "bandcamp",
+      displayName: "Bandcamp",
+      authorizationBasis: "rights-holder-storefront",
+      priceTier: "free-or-owned",
+      priorityRank: 20,
+      supportedFormats: ["mp3", "wav"],
+      search: async ({ track }) => ({
+        outcome: "candidates" as const,
+        candidates: [
+          buildMatchingCandidate(bandcampProvider, {
+            artist: track.primaryArtist ?? "Unknown Artist",
+            createdAt: "",
+            id: `track-${track.title}`,
+            runId: "run",
+            sourcePosition: 1,
+            sourceTrackId: null,
+            status: "queued",
+            title: track.title,
+            updatedAt: "",
+            version: track.mix.displayLabel
+          })
+        ]
+      }),
+      acquire: async ({ candidate, track }) => {
+        const downloadDirectory = path.join(tempWorkspace.workspaceRoot, "downloads");
+        const artifactFileName = `${track.title.toLowerCase().replace(/\s+/g, "-")}.mp3`;
+        const localFilePath = path.join(downloadDirectory, artifactFileName);
+
+        mkdirSync(downloadDirectory, { recursive: true });
+        writeFileSync(localFilePath, `${candidate.providerName}:${track.title}\n`, "utf8");
+
+        return {
+          outcome: "acquired" as const,
+          artifact: {
+            contentType: "audio/mpeg",
+            fileExtension: "mp3",
+            fileName: artifactFileName,
+            format: "mp3",
+            localFilePath,
+            sha256: null,
+            sizeBytes: readFileSync(localFilePath).byteLength
+          },
+          candidate
+        };
+      }
+    });
+
+    try {
+      initialRunStore = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+      const interruptedRun = createStubRun(
+        initialRunStore,
+        "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
+        [
+          {
+            artist: "Anyma",
+            sourcePosition: 1,
+            title: "Consciousness",
+            version: "Extended Mix"
+          },
+          {
+            artist: "Kx5",
+            sourcePosition: 2,
+            title: "Escape"
+          }
+        ]
+      );
+
+      initialRunStore.transitionRunStatus(interruptedRun.id, "ingesting");
+      initialRunStore.transitionRunStatus(interruptedRun.id, "matching");
+      initialRunStore.close();
+      initialRunStore = undefined;
+
+      resumedRunStore = createRunStore({ databasePath: tempWorkspace.databasePath });
+
+      expect(resumedRunStore.getRunStatusSnapshot(interruptedRun.id)).toEqual(
+        expect.objectContaining({
+          resumeAfterStatus: "matching",
+          status: "queued"
+        })
+      );
+
+      const resumedRun = await executeQueuedRun(interruptedRun.id, {
+        providerRegistry: createStubRegistry([bandcampProvider]),
+        runStore: resumedRunStore,
+        workspaceRoot: tempWorkspace.workspaceRoot
+      });
+
+      expect(resumedRun.status).toBe("completed");
+      expect(resumedRun.resumeAfterStatus).toBe("matching");
+      expect(resumedRun.tracks.map((track) => [track.sourcePosition, track.status])).toEqual(
+        [
+          [1, "acquired"],
+          [2, "acquired"]
+        ]
+      );
+      expect([...resumedRun.artifacts.map((artifact) => artifact.kind)].sort()).toEqual([
+        "downloads-zip",
+        "manifest-json",
+        "misses-txt"
+      ]);
+    } finally {
+      initialRunStore?.close();
+      resumedRunStore?.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
   it("executes automatic providers in priority order, persists selected outcomes, and packages fully auto-resolved runs", async () => {
     const tempWorkspace = createTempWorkspace();
     const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });
@@ -515,6 +632,15 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           }
         ]
       }),
+      acquirePurchased: async ({ candidate }) =>
+        buildProviderRejectedResult({
+          candidate,
+          detail:
+            "Stub Beatport provider does not acquire purchased downloads in this orchestration test.",
+          providerId: "beatport",
+          providerName: "Beatport",
+          reason: "provider-error"
+        }),
       queueForReview: async ({ candidate }) => ({
         outcome: "queued-for-review" as const,
         candidate,

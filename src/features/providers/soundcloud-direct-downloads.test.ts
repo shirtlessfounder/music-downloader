@@ -43,6 +43,14 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
             reason: "no-search-results",
             trackMissReason: "no-authorized-source-match"
           }),
+        acquirePurchased: async ({ candidate }) =>
+          buildProviderRejectedResult({
+            candidate,
+            detail: "Fixture provider does not acquire owned downloads in this test.",
+            providerId: "beatport",
+            providerName: "Beatport",
+            reason: "provider-error"
+          }),
         queueForReview: async ({ candidate }) => ({
           outcome: "queued-for-review",
           candidate,

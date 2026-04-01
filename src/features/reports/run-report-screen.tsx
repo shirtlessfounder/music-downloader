@@ -309,7 +309,7 @@ function formatReviewDecision(
     case "approved":
       return "Approved for manual purchase";
     case "purchased":
-      return "Purchased, awaiting import before packaging";
+      return "Purchased download acquired for packaging";
     case "rejected":
       return "Rejected during paid review";
     default:

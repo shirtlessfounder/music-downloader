@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getRunStore } from "@/features/runs/run-store";
+import { getSharedRunWorker } from "@/features/runs/run-worker";
 
 type RouteContext = {
   params: Promise<{
@@ -9,6 +10,8 @@ type RouteContext = {
 };
 
 export async function GET(_request: Request, context: RouteContext) {
+  getSharedRunWorker();
+
   const { runId } = await context.params;
   const run = getRunStore().getRun(runId);
 

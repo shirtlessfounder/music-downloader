@@ -30,7 +30,7 @@ export function createLiveProviderRegistry(
   return new ProviderRegistry([
     createSoundCloudDirectDownloadsProvider({ browserSessionService }),
     createBandcampProvider({ browserSessionService }),
-    createBeatportProvider()
+    createBeatportProvider({ browserSessionService })
   ]);
 }
 

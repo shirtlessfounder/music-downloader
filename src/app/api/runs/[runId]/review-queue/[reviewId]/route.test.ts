@@ -1,6 +1,12 @@
 /* @vitest-environment node */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -28,13 +34,51 @@ async function withTempWorkspace(
 }
 
 describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
-  it("persists approve reject and purchased review actions", async () => {
-    await withTempWorkspace(async () => {
+  it("acquires a purchased Beatport review and completes the run through existing artifacts", async () => {
+    await withTempWorkspace(async (workspaceRoot) => {
       vi.resetModules();
+      vi.doMock("@/features/providers/live-provider-registry", () => ({
+        createLiveProviderRegistry: () => ({
+          get(providerId: string) {
+            if (providerId !== "beatport") {
+              return null;
+            }
 
-      const [{ POST }, runStoreModule] = await Promise.all([
+            return {
+              acquirePurchased: async ({ candidate }: { candidate: { candidateId: string } }) => {
+                const artifactDirectory = path.join(workspaceRoot, "downloads");
+                const artifactBody = Buffer.from(
+                  `owned artifact for ${candidate.candidateId}\n`,
+                  "utf8"
+                );
+                const artifactPath = path.join(artifactDirectory, "track-one.mp3");
+
+                mkdirSync(artifactDirectory, { recursive: true });
+                writeFileSync(artifactPath, artifactBody);
+
+                return {
+                  outcome: "acquired" as const,
+                  artifact: {
+                    contentType: "audio/mpeg",
+                    fileExtension: "mp3",
+                    fileName: "track-one.mp3",
+                    format: "mp3" as const,
+                    localFilePath: artifactPath,
+                    sha256: "abc123",
+                    sizeBytes: artifactBody.byteLength
+                  },
+                  candidate
+                };
+              }
+            };
+          }
+        })
+      }));
+
+      const [{ POST }, runStoreModule, artifactsModule] = await Promise.all([
         import("./route"),
-        import("@/features/runs/run-store")
+        import("@/features/runs/run-store"),
+        import("@/features/artifacts/run-artifacts")
       ]);
       const store = runStoreModule.getRunStore();
       const run = store.createRun({
@@ -156,7 +200,7 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
       expect(store.getRun(run.id)).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "awaiting-approval"
+          status: "completed"
         })
       );
       expect(
@@ -172,15 +216,153 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
           .getRun(run.id)
           ?.tracks.map((track) => [track.sourcePosition, track.status])
       ).toEqual([
-        [1, "awaiting-approval"],
+        [1, "acquired"],
         [2, "missed"]
       ]);
+      expect([...((store.getRun(run.id)?.artifacts ?? []).map((artifact) => artifact.kind))].sort()).toEqual([
+        "downloads-zip",
+        "manifest-json",
+        "misses-txt"
+      ]);
+      expect(
+        artifactsModule
+          .listRunArtifactDownloads({
+            runId: run.id,
+            runStore: store
+          })
+          .map((artifact) => artifact.kind)
+      ).toEqual(["downloads-zip", "misses-txt", "manifest-json"]);
+
+      const manifestArtifact = store
+        .getRun(run.id)
+        ?.artifacts.find((artifact) => artifact.kind === "manifest-json");
+
+      expect(manifestArtifact).toBeDefined();
+
+      const manifest = JSON.parse(
+        readFileSync(
+          path.join(workspaceRoot, manifestArtifact?.relativePath ?? ""),
+          "utf8"
+        )
+      ) as {
+        summary: {
+          acquiredCount: number;
+          missCount: number;
+          trackCount: number;
+        };
+      };
+
+      expect(manifest.summary).toEqual({
+        acquiredCount: 1,
+        missCount: 1,
+        trackCount: 2
+      });
+    });
+  });
+
+  it("returns 409 when purchased acquisition fails and leaves the review queued", async () => {
+    await withTempWorkspace(async () => {
+      vi.resetModules();
+      vi.doMock("@/features/providers/live-provider-registry", () => ({
+        createLiveProviderRegistry: () => ({
+          get(providerId: string) {
+            if (providerId !== "beatport") {
+              return null;
+            }
+
+            return {
+              acquirePurchased: async ({ candidate }: { candidate: { candidateId: string } }) => ({
+                outcome: "rejected" as const,
+                candidate,
+                rejection: {
+                  detail:
+                    "The Beatport browser session expired and must be refreshed before owned downloads can be acquired.",
+                  providerId: "beatport",
+                  providerName: "Beatport",
+                  reason: "provider-session-expired" as const,
+                  retryable: true
+                }
+              })
+            };
+          }
+        })
+      }));
+
+      const [{ POST }, runStoreModule] = await Promise.all([
+        import("./route"),
+        import("@/features/runs/run-store")
+      ]);
+      const store = runStoreModule.getRunStore();
+      const run = store.createRun({
+        playlistTitle: "Beatport Purchased Failure",
+        playlistUrl: "https://soundcloud.com/sets/beatport-purchased-failure",
+        sourceType: "soundcloud"
+      });
+      const [track] = store.replaceRunTracks(run.id, [
+        {
+          artist: "Artist One",
+          sourcePosition: 1,
+          title: "Track One"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+
+      const review = store.queueRunTrackReview({
+        authorizationBasis: "purchase-entitlement",
+        availableFormats: ["mp3"],
+        candidateId: "beatport-purchased-failure-1",
+        mixLabel: null,
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/track-one/failure-1",
+        queueName: "beatport-review",
+        runTrackId: track.id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+
+      const purchasedResponse = await POST(
+        new Request(`http://localhost/api/runs/${run.id}/review-queue/${review.id}`, {
+          body: JSON.stringify({ action: "purchased" }),
+          headers: {
+            "content-type": "application/json"
+          },
+          method: "POST"
+        }),
+        {
+          params: Promise.resolve({
+            reviewId: review.id,
+            runId: run.id
+          })
+        }
+      );
+
+      expect(purchasedResponse.status).toBe(409);
+      await expect(purchasedResponse.json()).resolves.toEqual({
+        error:
+          "The Beatport browser session expired and must be refreshed before owned downloads can be acquired."
+      });
+      expect(store.getRun(run.id)).toEqual(
+        expect.objectContaining({
+          id: run.id,
+          status: "awaiting-approval"
+        })
+      );
+      expect(
+        store.getRun(run.id)?.reviewQueue.map((candidate) => [candidate.candidateId, candidate.status])
+      ).toEqual([["beatport-purchased-failure-1", "queued"]]);
+      expect(
+        store.getRun(run.id)?.tracks.map((candidate) => [candidate.sourcePosition, candidate.status])
+      ).toEqual([[1, "awaiting-approval"]]);
     });
   });
 
   it("finalizes the run when the last remaining review candidate is rejected", async () => {
     await withTempWorkspace(async (workspaceRoot) => {
       vi.resetModules();
+      vi.doUnmock("@/features/providers/live-provider-registry");
 
       const [{ POST }, runStoreModule, artifactsModule] = await Promise.all([
         import("./route"),
