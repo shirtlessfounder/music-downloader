@@ -4,8 +4,10 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  // The fixture harness resets one shared runtime workspace between tests.
+  fullyParallel: false,
   reporter: "list",
+  workers: 1,
   use: {
     baseURL: "http://127.0.0.1:3000",
     trace: "on-first-retry"
