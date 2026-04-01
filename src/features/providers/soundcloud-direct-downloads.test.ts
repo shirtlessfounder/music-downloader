@@ -438,6 +438,79 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
     }
   });
 
+  it("rejects background search while an operator-owned SoundCloud session is already open", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "music-downloader-soundcloud-provider-operator-session-")
+    );
+    const fixtureServer = await startSoundCloudFixtureServer({
+      searchResults: ["/dj-sealer/warehouse-tool-extended-mix"],
+      tracks: [
+        {
+          artistName: "DJ Sealer",
+          download: {
+            body: "mp3 fixture payload\n",
+            contentType: "audio/mpeg",
+            fileName: "warehouse-tool.mp3"
+          },
+          durationSeconds: 392,
+          path: "/dj-sealer/warehouse-tool-extended-mix",
+          title: "Warehouse Tool (Extended Mix)",
+          trackId: "111"
+        }
+      ]
+    });
+    const browserSessionService = new BrowserSessionService({ workspaceRoot });
+    const provider = createSoundCloudDirectDownloadsProvider({
+      baseUrl: fixtureServer.origin,
+      browserSessionService
+    });
+
+    try {
+      await seedAuthenticatedSession(browserSessionService);
+      const operatorSession = await browserSessionService.openSession({
+        owner: "operator",
+        sessionName: SOUNDCLOUD_DIRECT_DOWNLOADS_SESSION_NAME
+      });
+      const setupUrl =
+        `${fixtureServer.origin}/dj-sealer/warehouse-tool-extended-mix`;
+
+      await operatorSession.navigate({
+        url: setupUrl,
+        waitUntil: "load"
+      });
+
+      await expect(
+        provider.search({
+          track: canonicalizeTrack({
+            artistName: "DJ Sealer",
+            source: "spotify",
+            title: "Warehouse Tool (Extended Mix)"
+          })
+        })
+      ).resolves.toEqual({
+        outcome: "rejected",
+        rejection: {
+          detail:
+            "An operator-owned browser session is already open for SoundCloud Direct Downloads. Finish or close it before background provider work can run.",
+          providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
+          providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
+          reason: "provider-session-active",
+          retryable: true,
+          trackDecisionReason: undefined
+        }
+      });
+      await expect(operatorSession.withPage(async (page) => page.url())).resolves.toBe(
+        setupUrl
+      );
+
+      await operatorSession.close();
+    } finally {
+      await browserSessionService.shutdown();
+      await fixtureServer.close();
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
+
   it(
     "acquires the original uploaded file and normalizes artifact metadata",
     async () => {

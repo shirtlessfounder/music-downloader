@@ -4,12 +4,7 @@ import path from "node:path";
 
 import type { Page } from "playwright";
 
-import {
-  BrowserSessionService,
-  ExpiredBrowserSessionAuthStateError,
-  MissingBrowserSessionAuthStateError,
-  MissingBrowserSessionStateError
-} from "@/features/browser/browser-session-service";
+import { BrowserSessionService } from "@/features/browser/browser-session-service";
 import { canonicalizeTrack, type CanonicalTrack } from "@/features/tracks/canonical-track";
 
 import {
@@ -21,6 +16,7 @@ import {
   type ProviderCandidate,
   type ProviderSearchInput
 } from "./provider-registry";
+import { openAuthenticatedBackgroundProviderSession } from "./provider-browser-session";
 
 export const SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID = "soundcloud-direct-downloads";
 export const SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME =
@@ -307,36 +303,16 @@ async function openAuthenticatedSession(
   browserSessionService: SoundCloudDirectDownloadsProviderDependencies["browserSessionService"],
   sessionName: string
 ) {
-  try {
-    await browserSessionService.requireAuthenticatedSession(sessionName);
-  } catch (error) {
-    if (
-      error instanceof MissingBrowserSessionStateError ||
-      error instanceof MissingBrowserSessionAuthStateError
-    ) {
-      return buildProviderRejectedResult({
-        detail:
-          "An authenticated SoundCloud browser session is required before automatic downloads can run.",
-        providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
-        providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-        reason: "auth-required"
-      });
-    }
-
-    if (error instanceof ExpiredBrowserSessionAuthStateError) {
-      return buildProviderRejectedResult({
-        detail:
-          "The SoundCloud browser session expired and must be refreshed before automatic downloads can run.",
-        providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
-        providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-        reason: "provider-session-expired"
-      });
-    }
-
-    throw error;
-  }
-
-  return browserSessionService.openSession({ sessionName });
+  return openAuthenticatedBackgroundProviderSession({
+    authRequiredDetail:
+      "An authenticated SoundCloud browser session is required before automatic downloads can run.",
+    browserSessionService,
+    expiredDetail:
+      "The SoundCloud browser session expired and must be refreshed before automatic downloads can run.",
+    providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
+    providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
+    sessionName
+  });
 }
 
 function buildSearchQuery(track: CanonicalTrack) {

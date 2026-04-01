@@ -9,6 +9,7 @@ import type { BrowserContext, BrowserType } from "playwright";
 import { describe, expect, it } from "vitest";
 
 import {
+  BrowserSessionOwnershipConflictError,
   BrowserSessionService,
   MissingBrowserSessionAuthStateError,
   MissingBrowserSessionStateError
@@ -204,6 +205,59 @@ describe("BrowserSessionService", () => {
           headless: false
         })
       );
+    } finally {
+      await service.shutdown();
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects background reuse when a headed operator session is already active", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "music-downloader-browser-session-ownership-")
+    );
+    const launchPersistentContext = vi
+      .fn<BrowserType["launchPersistentContext"]>()
+      .mockImplementation(async () => createStubBrowserContext());
+    const service = new BrowserSessionService({
+      workspaceRoot,
+      browserType: {
+        launchPersistentContext
+      } as unknown as BrowserType
+    });
+
+    try {
+      const operatorSession = await service.openSession({
+        headless: false,
+        sessionName: "bandcamp"
+      });
+
+      await expect(
+        service.openSession({
+          sessionName: "bandcamp"
+        })
+      ).rejects.toBeInstanceOf(BrowserSessionOwnershipConflictError);
+      await expect(
+        service.openSession({
+          sessionName: "bandcamp"
+        })
+      ).rejects.toEqual(
+        expect.objectContaining({
+          activeOwner: "operator",
+          code: "browser-session-ownership-conflict",
+          requestedOwner: "background",
+          sessionName: "bandcamp"
+        })
+      );
+      await expect(
+        service.openSession({
+          headless: false,
+          sessionName: "bandcamp"
+        })
+      ).resolves.toBe(operatorSession);
+      expect(launchPersistentContext).toHaveBeenCalledTimes(1);
+
+      await operatorSession.close();
+      await service.shutdown();
     } finally {
       await service.shutdown();
       await rm(workspaceRoot, { force: true, recursive: true });

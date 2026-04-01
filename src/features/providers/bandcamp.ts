@@ -4,12 +4,7 @@ import path from "node:path";
 
 import type { Page } from "playwright";
 
-import {
-  BrowserSessionService,
-  ExpiredBrowserSessionAuthStateError,
-  MissingBrowserSessionAuthStateError,
-  MissingBrowserSessionStateError
-} from "@/features/browser/browser-session-service";
+import { BrowserSessionService } from "@/features/browser/browser-session-service";
 import { canonicalizeTrack, type CanonicalTrack } from "@/features/tracks/canonical-track";
 
 import {
@@ -21,6 +16,7 @@ import {
   type ProviderCandidate,
   type ProviderSearchInput
 } from "./provider-registry";
+import { openAuthenticatedBackgroundProviderSession } from "./provider-browser-session";
 
 export const BANDCAMP_PROVIDER_ID = "bandcamp";
 export const BANDCAMP_PROVIDER_NAME = "Bandcamp";
@@ -331,36 +327,16 @@ async function openAuthenticatedSession(
   browserSessionService: BandcampProviderDependencies["browserSessionService"],
   sessionName: string
 ) {
-  try {
-    await browserSessionService.requireAuthenticatedSession(sessionName);
-  } catch (error) {
-    if (
-      error instanceof MissingBrowserSessionStateError ||
-      error instanceof MissingBrowserSessionAuthStateError
-    ) {
-      return buildProviderRejectedResult({
-        detail:
-          "An authenticated Bandcamp browser session is required before automatic downloads can run.",
-        providerId: BANDCAMP_PROVIDER_ID,
-        providerName: BANDCAMP_PROVIDER_NAME,
-        reason: "auth-required"
-      });
-    }
-
-    if (error instanceof ExpiredBrowserSessionAuthStateError) {
-      return buildProviderRejectedResult({
-        detail:
-          "The Bandcamp browser session expired and must be refreshed before automatic downloads can run.",
-        providerId: BANDCAMP_PROVIDER_ID,
-        providerName: BANDCAMP_PROVIDER_NAME,
-        reason: "provider-session-expired"
-      });
-    }
-
-    throw error;
-  }
-
-  return browserSessionService.openSession({ sessionName });
+  return openAuthenticatedBackgroundProviderSession({
+    authRequiredDetail:
+      "An authenticated Bandcamp browser session is required before automatic downloads can run.",
+    browserSessionService,
+    expiredDetail:
+      "The Bandcamp browser session expired and must be refreshed before automatic downloads can run.",
+    providerId: BANDCAMP_PROVIDER_ID,
+    providerName: BANDCAMP_PROVIDER_NAME,
+    sessionName
+  });
 }
 
 function buildSearchQuery(track: CanonicalTrack) {

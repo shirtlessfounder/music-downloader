@@ -40,6 +40,8 @@ export interface BrowserSessionRecord {
   authState: BrowserSessionAuthState;
 }
 
+export type BrowserSessionOwner = "background" | "operator";
+
 export interface BrowserSessionServiceOptions {
   workspaceRoot: string;
   browserType?: BrowserType;
@@ -47,6 +49,7 @@ export interface BrowserSessionServiceOptions {
 
 export interface OpenBrowserSessionOptions {
   headless?: boolean;
+  owner?: BrowserSessionOwner;
   reuseExisting?: boolean;
   sessionName: string;
   authState?: BrowserSessionAuthState;
@@ -153,6 +156,27 @@ export class ActiveBrowserSessionConflictError extends Error {
   }
 }
 
+export class BrowserSessionOwnershipConflictError extends Error {
+  readonly activeOwner: BrowserSessionOwner;
+  readonly code = "browser-session-ownership-conflict";
+  readonly requestedOwner: BrowserSessionOwner;
+  readonly sessionName: string;
+
+  constructor(input: {
+    activeOwner: BrowserSessionOwner;
+    requestedOwner: BrowserSessionOwner;
+    sessionName: string;
+  }) {
+    super(
+      `Browser session "${input.sessionName}" is already active for ${input.activeOwner} work.`
+    );
+    this.name = "BrowserSessionOwnershipConflictError";
+    this.activeOwner = input.activeOwner;
+    this.requestedOwner = input.requestedOwner;
+    this.sessionName = input.sessionName;
+  }
+}
+
 /**
  * Manages named persistent Playwright profiles inside the local app workspace.
  */
@@ -171,10 +195,19 @@ export class BrowserSessionService {
    */
   async openSession(options: OpenBrowserSessionOptions): Promise<ProviderBrowserSession> {
     const activeSession = this.#activeSessions.get(options.sessionName);
+    const owner = resolveBrowserSessionOwner(options);
 
     if (activeSession) {
       if (options.reuseExisting === false) {
         throw new ActiveBrowserSessionConflictError(options.sessionName);
+      }
+
+      if (activeSession.owner !== owner) {
+        throw new BrowserSessionOwnershipConflictError({
+          activeOwner: activeSession.owner,
+          requestedOwner: owner,
+          sessionName: options.sessionName
+        });
       }
 
       if (options.authState) {
@@ -211,6 +244,7 @@ export class BrowserSessionService {
       onClose: () => {
         this.#activeSessions.delete(options.sessionName);
       },
+      owner,
       record,
       sessionPaths
     });
@@ -276,6 +310,7 @@ export class BrowserSessionService {
 interface ManagedBrowserSessionOptions {
   context: BrowserContext;
   onClose: () => void;
+  owner: BrowserSessionOwner;
   record: BrowserSessionRecord;
   sessionPaths: {
     metadataPath: string;
@@ -303,6 +338,7 @@ class ManagedBrowserSession implements ProviderBrowserSession {
     this.#onClose = options.onClose;
     this.#record = options.record;
     this.#sessionRoot = options.sessionPaths.sessionRoot;
+    this.owner = options.owner;
     this.sessionName = options.record.sessionName;
     this.wasReused = options.record.createdAt !== options.record.lastOpenedAt;
   }
@@ -313,6 +349,7 @@ class ManagedBrowserSession implements ProviderBrowserSession {
 
   readonly sessionName: string;
   readonly wasReused: boolean;
+  readonly owner: BrowserSessionOwner;
 
   async navigate(
     options: BrowserSessionNavigationOptions
@@ -415,6 +452,16 @@ function sanitizeSessionName(sessionName: string) {
   }
 
   return safeSessionName;
+}
+
+function resolveBrowserSessionOwner(
+  options: OpenBrowserSessionOptions
+): BrowserSessionOwner {
+  if (options.owner) {
+    return options.owner;
+  }
+
+  return (options.headless ?? true) ? "background" : "operator";
 }
 
 async function readBrowserSessionRecord(metadataPath: string) {
