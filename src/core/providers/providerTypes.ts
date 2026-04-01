@@ -29,6 +29,7 @@ export type ProviderResult = ProviderSuccessResult | ProviderFailureResult;
 
 export type ProviderDownloadInput = {
   track: CanonicalTrack;
+  sourceUrl?: string | null;
 };
 
 export interface DownloadProvider {
