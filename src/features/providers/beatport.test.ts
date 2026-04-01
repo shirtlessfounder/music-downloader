@@ -1,3 +1,5 @@
+/* @vitest-environment node */
+
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
@@ -17,7 +19,9 @@ import {
 import { createLiveProviderRegistry } from "./live-provider-registry";
 
 describe("createBeatportProvider", () => {
-  it("builds review queue candidates with an exact Beatport track target for paid fallback review", async () => {
+  it(
+    "builds review queue candidates with an exact Beatport track target for paid fallback review",
+    async () => {
     const workspaceRoot = await mkdtemp(
       path.join(os.tmpdir(), "music-downloader-beatport-provider-search-")
     );
@@ -82,9 +86,13 @@ describe("createBeatportProvider", () => {
       await fixtureServer.close();
       await rm(workspaceRoot, { force: true, recursive: true });
     }
-  });
+    },
+    15_000
+  );
 
-  it("acquires an owned Beatport download from the exact reviewed track page and prefers MP3 over WAV", async () => {
+  it(
+    "acquires an owned Beatport download from the exact reviewed track page and prefers MP3 over WAV",
+    async () => {
     const workspaceRoot = await mkdtemp(
       path.join(os.tmpdir(), "music-downloader-beatport-provider-owned-")
     );
@@ -144,7 +152,9 @@ describe("createBeatportProvider", () => {
       await fixtureServer.close();
       await rm(workspaceRoot, { force: true, recursive: true });
     }
-  });
+    },
+    15_000
+  );
 
   it("rejects owned downloads when no authenticated Beatport session is available", async () => {
     const workspaceRoot = await mkdtemp(

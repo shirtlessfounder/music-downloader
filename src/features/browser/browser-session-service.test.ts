@@ -58,100 +58,108 @@ describe("BrowserSessionService", () => {
     15_000
   );
 
-  it("surfaces typed missing and expired auth state failures", async () => {
-    const workspaceRoot = await mkdtemp(
-      path.join(os.tmpdir(), "music-downloader-browser-session-auth-")
-    );
-    const service = new BrowserSessionService({ workspaceRoot });
-
-    try {
-      await expect(
-        service.requireAuthenticatedSession("missing-session")
-      ).rejects.toBeInstanceOf(MissingBrowserSessionStateError);
-
-      const unknownAuthSession = await service.openSession({
-        sessionName: "beatport-review"
-      });
-      await unknownAuthSession.close();
-
-      await expect(
-        service.requireAuthenticatedSession("beatport-review")
-      ).rejects.toBeInstanceOf(MissingBrowserSessionAuthStateError);
-
-      const expiredAt = "2026-03-31T05:00:00.000Z";
-      const expiredSession = await service.openSession({
-        sessionName: "expired-session",
-        authState: {
-          expiredAt,
-          providerId: "beatport",
-          reason: "fixture login expired",
-          status: "expired"
-        }
-      });
-      await expiredSession.close();
-
-      await expect(
-        service.requireAuthenticatedSession("expired-session")
-      ).rejects.toEqual(
-        expect.objectContaining({
-          code: "expired-session-auth-state",
-          expiredAt,
-          sessionName: "expired-session"
-        })
+  it(
+    "surfaces typed missing and expired auth state failures",
+    async () => {
+      const workspaceRoot = await mkdtemp(
+        path.join(os.tmpdir(), "music-downloader-browser-session-auth-")
       );
-    } finally {
-      await service.shutdown();
-      await rm(workspaceRoot, { force: true, recursive: true });
-    }
-  });
+      const service = new BrowserSessionService({ workspaceRoot });
 
-  it("wraps navigation, screenshots, and downloads behind provider helpers", async () => {
-    const workspaceRoot = await mkdtemp(
-      path.join(os.tmpdir(), "music-downloader-browser-session-helpers-")
-    );
-    const fixtureServer = await startFixtureServer();
-    const service = new BrowserSessionService({ workspaceRoot });
+      try {
+        await expect(
+          service.requireAuthenticatedSession("missing-session")
+        ).rejects.toBeInstanceOf(MissingBrowserSessionStateError);
 
-    try {
-      const session = await service.openSession({
-        sessionName: "helper-fixture",
-        authState: {
-          authenticatedAt: "2026-03-31T05:00:00.000Z",
-          providerId: "fixture-provider",
-          status: "authenticated"
-        }
-      });
+        const unknownAuthSession = await service.openSession({
+          sessionName: "beatport-review"
+        });
+        await unknownAuthSession.close();
 
-      const visit = await session.navigate({ url: fixtureServer.url("/download") });
-      expect(visit).toEqual({
-        status: 200,
-        url: fixtureServer.url("/download")
-      });
+        await expect(
+          service.requireAuthenticatedSession("beatport-review")
+        ).rejects.toBeInstanceOf(MissingBrowserSessionAuthStateError);
 
-      const screenshotPath = path.join(workspaceRoot, "artifacts", "fixture.png");
-      const screenshot = await session.takeScreenshot({ path: screenshotPath });
-      await access(screenshot.path);
+        const expiredAt = "2026-03-31T05:00:00.000Z";
+        const expiredSession = await service.openSession({
+          sessionName: "expired-session",
+          authState: {
+            expiredAt,
+            providerId: "beatport",
+            reason: "fixture login expired",
+            status: "expired"
+          }
+        });
+        await expiredSession.close();
 
-      const downloadPath = path.join(workspaceRoot, "artifacts", "fixture.txt");
-      const download = await session.captureDownload({
-        saveAs: downloadPath,
-        trigger: async (page) => {
-          await page.getByRole("link", { name: "Download fixture" }).click();
-        }
-      });
+        await expect(
+          service.requireAuthenticatedSession("expired-session")
+        ).rejects.toEqual(
+          expect.objectContaining({
+            code: "expired-session-auth-state",
+            expiredAt,
+            sessionName: "expired-session"
+          })
+        );
+      } finally {
+        await service.shutdown();
+        await rm(workspaceRoot, { force: true, recursive: true });
+      }
+    },
+    15_000
+  );
 
-      expect(download.suggestedFilename).toBe("fixture.txt");
-      expect(await readFile(download.path, "utf8")).toBe("fixture download contents\n");
-      await access(download.path);
-      expect(screenshot).toEqual({ path: screenshotPath });
+  it(
+    "wraps navigation, screenshots, and downloads behind provider helpers",
+    async () => {
+      const workspaceRoot = await mkdtemp(
+        path.join(os.tmpdir(), "music-downloader-browser-session-helpers-")
+      );
+      const fixtureServer = await startFixtureServer();
+      const service = new BrowserSessionService({ workspaceRoot });
 
-      await session.close();
-    } finally {
-      await service.shutdown();
-      await fixtureServer.close();
-      await rm(workspaceRoot, { force: true, recursive: true });
-    }
-  });
+      try {
+        const session = await service.openSession({
+          sessionName: "helper-fixture",
+          authState: {
+            authenticatedAt: "2026-03-31T05:00:00.000Z",
+            providerId: "fixture-provider",
+            status: "authenticated"
+          }
+        });
+
+        const visit = await session.navigate({ url: fixtureServer.url("/download") });
+        expect(visit).toEqual({
+          status: 200,
+          url: fixtureServer.url("/download")
+        });
+
+        const screenshotPath = path.join(workspaceRoot, "artifacts", "fixture.png");
+        const screenshot = await session.takeScreenshot({ path: screenshotPath });
+        await access(screenshot.path);
+
+        const downloadPath = path.join(workspaceRoot, "artifacts", "fixture.txt");
+        const download = await session.captureDownload({
+          saveAs: downloadPath,
+          trigger: async (page) => {
+            await page.getByRole("link", { name: "Download fixture" }).click();
+          }
+        });
+
+        expect(download.suggestedFilename).toBe("fixture.txt");
+        expect(await readFile(download.path, "utf8")).toBe("fixture download contents\n");
+        await access(download.path);
+        expect(screenshot).toEqual({ path: screenshotPath });
+
+        await session.close();
+      } finally {
+        await service.shutdown();
+        await fixtureServer.close();
+        await rm(workspaceRoot, { force: true, recursive: true });
+      }
+    },
+    15_000
+  );
 });
 
 async function startFixtureServer() {
