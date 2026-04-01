@@ -5,20 +5,28 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 
 async function withTempDatabase(
-  callback: (databasePath: string) => Promise<void> | void
+  callback: (input: {
+    databasePath: string;
+    workspaceRoot: string;
+  }) => Promise<void> | void
 ) {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), "music-downloader-api-"));
   const databasePath = path.join(tempDirectory, "music-downloader.sqlite");
 
   process.env.MUSIC_DOWNLOADER_DB_PATH = databasePath;
+  process.env.MUSIC_DOWNLOADER_WORKSPACE_ROOT = tempDirectory;
 
   try {
-    await callback(databasePath);
+    await callback({
+      databasePath,
+      workspaceRoot: tempDirectory
+    });
   } finally {
     const runStoreModule = await import("@/features/runs/run-store");
 
     runStoreModule.resetRunStoreForTests();
     delete process.env.MUSIC_DOWNLOADER_DB_PATH;
+    delete process.env.MUSIC_DOWNLOADER_WORKSPACE_ROOT;
     rmSync(tempDirectory, { force: true, recursive: true });
   }
 }
@@ -32,7 +40,7 @@ afterEach(() => {
 
 describe("/api/runs", () => {
   it("persists queued runs and schedules shared background execution without awaiting it", async () => {
-    await withTempDatabase(async (databasePath) => {
+    await withTempDatabase(async ({ databasePath }) => {
       vi.resetModules();
 
       const playlistUrl = "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9";
@@ -131,57 +139,30 @@ describe("/api/runs", () => {
     });
   });
 
-  it("returns explicit setup errors when Spotify credentials are missing", async () => {
+  it("returns explicit setup errors when Spotify is not connected", async () => {
     await withTempDatabase(async () => {
       vi.resetModules();
 
-      const originalClientId = process.env.SPOTIFY_CLIENT_ID;
-      const originalClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-      const originalMarket = process.env.SPOTIFY_MARKET;
+      const { POST } = await import("./route");
 
-      delete process.env.SPOTIFY_CLIENT_ID;
-      delete process.env.SPOTIFY_CLIENT_SECRET;
-      delete process.env.SPOTIFY_MARKET;
+      const response = await POST(
+        new Request("http://localhost/api/runs", {
+          body: JSON.stringify({
+            playlistUrl:
+              "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9"
+          }),
+          headers: {
+            "content-type": "application/json"
+          },
+          method: "POST"
+        })
+      );
 
-      try {
-        const { POST } = await import("./route");
-
-        const response = await POST(
-          new Request("http://localhost/api/runs", {
-            body: JSON.stringify({
-              playlistUrl:
-                "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9"
-            }),
-            headers: {
-              "content-type": "application/json"
-            },
-            method: "POST"
-          })
-        );
-
-        expect(response.status).toBe(500);
-        await expect(response.json()).resolves.toEqual({
-          error: "Spotify ingestion requires SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET."
-        });
-      } finally {
-        if (originalClientId === undefined) {
-          delete process.env.SPOTIFY_CLIENT_ID;
-        } else {
-          process.env.SPOTIFY_CLIENT_ID = originalClientId;
-        }
-
-        if (originalClientSecret === undefined) {
-          delete process.env.SPOTIFY_CLIENT_SECRET;
-        } else {
-          process.env.SPOTIFY_CLIENT_SECRET = originalClientSecret;
-        }
-
-        if (originalMarket === undefined) {
-          delete process.env.SPOTIFY_MARKET;
-        } else {
-          process.env.SPOTIFY_MARKET = originalMarket;
-        }
-      }
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error:
+          "Spotify playlist intake requires a connected Spotify account. Use Connect Spotify first."
+      });
     });
   });
 

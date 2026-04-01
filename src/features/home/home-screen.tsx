@@ -15,6 +15,11 @@ const terminalStatuses: RunStatus[] = ["completed", "failed"];
 type HomeScreenProps = {
   initialBrowserSessions?: OperatorBrowserSessionReadiness[];
   initialRuns?: RunSummary[];
+  initialSpotifyAuth?: {
+    detail: string;
+    status: "connected" | "missing";
+    subjectHint: string | null;
+  };
 };
 
 function getStatusTone(status: RunStatus) {
@@ -132,7 +137,13 @@ function updateBrowserSession(
 
 export function HomeScreen({
   initialBrowserSessions = [],
-  initialRuns = []
+  initialRuns = [],
+  initialSpotifyAuth = {
+    detail:
+      "Spotify playlist intake requires a connected Spotify account before queueing Spotify playlists.",
+    status: "missing",
+    subjectHint: null
+  }
 }: HomeScreenProps) {
   const [browserSessions, setBrowserSessions] = useState(initialBrowserSessions);
   const [playlistUrl, setPlaylistUrl] = useState("");
@@ -318,6 +329,47 @@ export function HomeScreen({
       </header>
 
       <div className="dashboard-grid">
+        <Panel
+          eyebrow="Spotify"
+          title="Spotify Connection"
+          footer={
+            <span className="panel-caption">
+              {initialSpotifyAuth.status === "connected"
+                ? "Spotify playlist intake is ready"
+                : "Connect Spotify before queueing Spotify playlists"}
+            </span>
+          }
+        >
+          <div className="prerequisites-copy">
+            <p>{initialSpotifyAuth.detail}</p>
+            <p>
+              This connection is used only for Spotify playlist metadata intake.
+              Provider downloads still rely on the separate browser-session
+              setup below.
+            </p>
+          </div>
+
+          {initialSpotifyAuth.subjectHint ? (
+            <p className="session-card-meta">{initialSpotifyAuth.subjectHint}</p>
+          ) : null}
+
+          <div className="session-card-actions">
+            <Link
+              className="secondary-button"
+              href="/api/operator/spotify-auth/start"
+              aria-label={
+                initialSpotifyAuth.status === "connected"
+                  ? "Reconnect Spotify account"
+                  : "Connect Spotify account"
+              }
+            >
+              {initialSpotifyAuth.status === "connected"
+                ? "Reconnect Spotify"
+                : "Connect Spotify"}
+            </Link>
+          </div>
+        </Panel>
+
         <Panel
           className="prerequisites-panel"
           eyebrow="Live Setup"

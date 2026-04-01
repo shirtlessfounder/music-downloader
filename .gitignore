@@ -2,6 +2,8 @@
 node_modules
 .next
 .e2e
+.env.local
+.music-downloader/
 playwright-report
 test-results
 coverage

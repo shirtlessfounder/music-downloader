@@ -5,7 +5,10 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 
 async function withTempDatabase(
-  callback: (databasePath: string) => Promise<void> | void
+  callback: (input: {
+    databasePath: string;
+    workspaceRoot: string;
+  }) => Promise<void> | void
 ) {
   const tempDirectory = mkdtempSync(
     path.join(tmpdir(), "music-downloader-playlist-intake-")
@@ -13,21 +16,26 @@ async function withTempDatabase(
   const databasePath = path.join(tempDirectory, "music-downloader.sqlite");
 
   process.env.MUSIC_DOWNLOADER_DB_PATH = databasePath;
+  process.env.MUSIC_DOWNLOADER_WORKSPACE_ROOT = tempDirectory;
 
   try {
-    await callback(databasePath);
+    await callback({
+      databasePath,
+      workspaceRoot: tempDirectory
+    });
   } finally {
     const runStoreModule = await import("@/features/runs/run-store");
 
     runStoreModule.resetRunStoreForTests();
     delete process.env.MUSIC_DOWNLOADER_DB_PATH;
+    delete process.env.MUSIC_DOWNLOADER_WORKSPACE_ROOT;
     rmSync(tempDirectory, { force: true, recursive: true });
   }
 }
 
 describe("createRunFromPlaylistUrl", () => {
   it("ingests a Spotify playlist into persisted queued run data", async () => {
-    await withTempDatabase(async (databasePath) => {
+    await withTempDatabase(async ({ databasePath, workspaceRoot }) => {
       vi.resetModules();
 
       const originalClientId = process.env.SPOTIFY_CLIENT_ID;
@@ -37,6 +45,17 @@ describe("createRunFromPlaylistUrl", () => {
       process.env.SPOTIFY_CLIENT_ID = "spotify-client-id";
       process.env.SPOTIFY_CLIENT_SECRET = "spotify-client-secret";
       process.env.SPOTIFY_MARKET = "US";
+
+      const { createSpotifyAuthStore } = await import(
+        "@/features/spotify-auth/spotify-auth-store"
+      );
+      await createSpotifyAuthStore({ workspaceRoot }).writeSession({
+        connectedAt: "2026-04-01T00:00:00.000Z",
+        provider: "spotify",
+        refreshToken: "spotify-refresh-token",
+        scope: "playlist-read-private playlist-read-collaborative",
+        subjectHint: null
+      });
 
       const fetchSpy = vi
         .spyOn(globalThis, "fetch")

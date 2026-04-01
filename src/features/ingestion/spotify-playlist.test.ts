@@ -115,17 +115,9 @@ describe("mapSpotifyPlaylistSnapshot", () => {
 });
 
 describe("fetchSpotifyPlaylistSnapshot", () => {
-  it("uses the documented Spotify client-credentials contract and paginates playlist items", async () => {
+  it("refreshes a persisted Spotify session and paginates playlist items", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: "spotify-access-token" }), {
-          headers: {
-            "content-type": "application/json"
-          },
-          status: 200
-        })
-      )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -190,12 +182,31 @@ describe("fetchSpotifyPlaylistSnapshot", () => {
           }
         )
       );
+    const authStore = {
+      clearSession: vi.fn(),
+      readSession: vi.fn().mockResolvedValue({
+        connectedAt: "2026-04-01T00:00:00.000Z",
+        provider: "spotify" as const,
+        refreshToken: "spotify-refresh-token",
+        scope: "playlist-read-private playlist-read-collaborative",
+        subjectHint: null
+      }),
+      writeSession: vi.fn()
+    };
+    const authService = {
+      refreshAccessToken: vi.fn().mockResolvedValue({
+        accessToken: "spotify-access-token",
+        refreshToken: null,
+        scope: "playlist-read-private playlist-read-collaborative",
+        tokenType: "Bearer"
+      })
+    };
 
     const snapshot = await fetchSpotifyPlaylistSnapshot(
       "https://open.spotify.com/playlist/37i9dQZF1DX4dyzvuaRJ0n",
       {
-        clientId: "spotify-client-id",
-        clientSecret: "spotify-client-secret",
+        authService,
+        authStore,
         fetchImpl,
         market: "US"
       }
@@ -221,25 +232,14 @@ describe("fetchSpotifyPlaylistSnapshot", () => {
         }
       ]
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(authStore.readSession).toHaveBeenCalledTimes(1);
+    expect(authService.refreshAccessToken).toHaveBeenCalledWith({
+      refreshToken: "spotify-refresh-token"
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
 
-    const [tokenUrl, tokenRequest] = fetchImpl.mock.calls[0] ?? [];
-    const tokenHeaders = new Headers(tokenRequest?.headers);
-    const tokenBody = new URLSearchParams(String(tokenRequest?.body ?? ""));
-
-    expect(String(tokenUrl)).toBe("https://accounts.spotify.com/api/token");
-    expect(tokenRequest?.method).toBe("POST");
-    expect(tokenHeaders.get("accept")).toBe("application/json; charset=utf-8");
-    expect(tokenHeaders.get("content-type")).toBe(
-      "application/x-www-form-urlencoded"
-    );
-    expect(tokenHeaders.get("authorization")).toBe(
-      `Basic ${Buffer.from("spotify-client-id:spotify-client-secret").toString("base64")}`
-    );
-    expect(tokenBody.get("grant_type")).toBe("client_credentials");
-
-    const [metadataUrl, metadataRequest] = fetchImpl.mock.calls[1] ?? [];
-    const [itemsUrl, itemsRequest] = fetchImpl.mock.calls[2] ?? [];
+    const [metadataUrl, metadataRequest] = fetchImpl.mock.calls[0] ?? [];
+    const [itemsUrl, itemsRequest] = fetchImpl.mock.calls[1] ?? [];
 
     expect(String(metadataUrl)).toBe(
       "https://api.spotify.com/v1/playlists/37i9dQZF1DX4dyzvuaRJ0n"
@@ -254,6 +254,26 @@ describe("fetchSpotifyPlaylistSnapshot", () => {
     expect(String(itemsUrl)).toContain("market=US");
     expect(new Headers(itemsRequest?.headers).get("authorization")).toBe(
       "Bearer spotify-access-token"
+    );
+  });
+
+  it("returns an explicit setup error when no Spotify account is connected", async () => {
+    await expect(
+      fetchSpotifyPlaylistSnapshot(
+        "https://open.spotify.com/playlist/37i9dQZF1DX4dyzvuaRJ0n",
+        {
+          authService: {
+            refreshAccessToken: vi.fn()
+          },
+          authStore: {
+            clearSession: vi.fn(),
+            readSession: vi.fn().mockResolvedValue(null),
+            writeSession: vi.fn()
+          }
+        }
+      )
+    ).rejects.toThrowError(
+      "Spotify playlist intake requires a connected Spotify account. Use Connect Spotify first."
     );
   });
 });

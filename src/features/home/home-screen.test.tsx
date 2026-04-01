@@ -35,6 +35,12 @@ describe("HomeScreen", () => {
             status: "expired"
           }
         ]}
+        initialSpotifyAuth={{
+          detail:
+            "Spotify playlist intake requires a connected Spotify account before queueing Spotify playlists.",
+          status: "missing",
+          subjectHint: null
+        }}
       />
     );
 
@@ -61,6 +67,12 @@ describe("HomeScreen", () => {
     expect(
       screen.getByRole("heading", { name: /live prerequisites/i })
     ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: /spotify connection/i })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /connect spotify account/i })
+    ).toHaveAttribute("href", "/api/operator/spotify-auth/start");
     expect(
       screen.getByRole("button", {
         name: /launch soundcloud direct downloads session setup/i
@@ -92,11 +104,20 @@ describe("HomeScreen", () => {
             updatedAt: "2026-03-31T15:15:00.000Z"
           }
         ]}
+        initialSpotifyAuth={{
+          detail: "Spotify operator account connected for playlist intake.",
+          status: "connected",
+          subjectHint: "playlist-operator"
+        }}
       />
     );
 
     expect(
       screen.getByRole("link", { name: /open report for warehouse drivers/i })
     ).toHaveAttribute("href", "/runs/run-42");
+    expect(screen.getByText(/playlist-operator/i)).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /reconnect spotify account/i })
+    ).toHaveAttribute("href", "/api/operator/spotify-auth/start");
   });
 });

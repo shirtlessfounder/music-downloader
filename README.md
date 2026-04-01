@@ -32,8 +32,17 @@ persisted authenticated browser sessions for:
 - Bandcamp
 - Beatport
 
-To enable authorized Spotify playlist ingestion through the Spotify Web API
-client-credentials flow, set these Spotify env vars before starting the app:
+To enable Spotify playlist ingestion, create a Spotify app in the Spotify
+Developer Dashboard and add this exact redirect URI:
+
+```text
+http://127.0.0.1:3000/api/operator/spotify-auth/callback
+```
+
+Spotify no longer accepts `localhost` aliases for redirect URIs, so use
+`127.0.0.1` above even if you usually browse the local app at `localhost`.
+
+Then set these Spotify app env vars before starting the app:
 
 ```bash
 export SPOTIFY_CLIENT_ID=your-spotify-client-id
@@ -55,11 +64,16 @@ export SOUNDCLOUD_CLIENT_ID=your-soundcloud-client-id
 export SOUNDCLOUD_CLIENT_SECRET=your-soundcloud-client-secret
 ```
 
-After the app is running, open `http://127.0.0.1:3000` and use the `Live
-Prerequisites` panel to launch a headed setup session for each required
-provider browser profile. Complete the provider login manually in the opened
-Playwright window, then return to the shell and click `Mark ready` to persist
-the authenticated session metadata.
+After the app is running:
+
+1. Open `http://127.0.0.1:3000`
+2. Use the `Spotify Connection` panel to authorize Spotify once for playlist
+   intake
+3. Use the `Live Prerequisites` panel to launch a headed setup session for
+   each required provider browser profile
+4. Complete the provider login manually in the opened Playwright window, then
+   return to the shell and click `Mark ready` to persist the authenticated
+   session metadata
 
 Those browser profiles are stored inside the local workspace and can be
 refreshed later from the same panel if a provider session expires.
@@ -104,7 +118,8 @@ exercises:
 No live Spotify or SoundCloud credentials are required for that verification
 path, and the fixtures stay within the built-in provider scenarios. Use
 `npm run dev` with the env vars above when you want to test live playlist
-intake locally; live provider acquisition also requires the browser-session
+intake locally; Spotify playlist intake also requires the in-app `Connect
+Spotify` step, and live provider acquisition still requires the browser-session
 setup flow described above.
 
 ## Notes

@@ -1,3 +1,8 @@
+import {
+  SpotifyAuthConfigurationError,
+  createSpotifyAuthService
+} from "@/features/spotify-auth/spotify-auth-service";
+import { createSpotifyAuthStore } from "@/features/spotify-auth/spotify-auth-store";
 import type { ReplaceRunTrackInput } from "@/features/runs/run-store";
 import { canonicalizeTrack } from "@/features/tracks/canonical-track";
 
@@ -38,12 +43,6 @@ type SpotifyPlaylistItemsPagePayload = {
   next?: string | null;
 };
 
-type SpotifyTokenPayload = {
-  access_token?: string;
-  error?: string | { message?: string };
-  error_description?: string;
-};
-
 type SpotifyPlaylistSnapshot = {
   playlistTitle: string | null;
   playlistUrl: string;
@@ -52,11 +51,17 @@ type SpotifyPlaylistSnapshot = {
 
 type SpotifyPlaylistDependencies = {
   apiBaseUrl?: string;
-  clientId?: string;
-  clientSecret?: string;
+  authService?: Pick<
+    ReturnType<typeof createSpotifyAuthService>,
+    "refreshAccessToken"
+  >;
+  authStore?: Pick<
+    ReturnType<typeof createSpotifyAuthStore>,
+    "clearSession" | "readSession" | "writeSession"
+  >;
   fetchImpl?: FetchLike;
   market?: string;
-  tokenUrl?: string;
+  workspaceRoot?: string;
 };
 
 const spotifyHosts = new Set(["open.spotify.com", "play.spotify.com"]);
@@ -137,17 +142,6 @@ export async function fetchSpotifyPlaylistSnapshot(
   dependencies: SpotifyPlaylistDependencies = {}
 ) {
   const normalizedPlaylistUrl = parseSpotifyPlaylistUrl(playlistUrl).toString();
-  const clientId = dependencies.clientId ?? process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret =
-    dependencies.clientSecret ?? process.env.SPOTIFY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new PlaylistIntakeError(
-      "Spotify ingestion requires SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.",
-      500
-    );
-  }
-
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const playlistId = normalizedPlaylistUrl.split("/").at(-1);
 
@@ -155,13 +149,61 @@ export async function fetchSpotifyPlaylistSnapshot(
     throw new PlaylistIntakeError("Spotify URL is invalid.", 400);
   }
 
-  const accessToken = await fetchSpotifyAccessToken({
-    clientId,
-    clientSecret,
-    fetchImpl,
-    tokenUrl:
-      dependencies.tokenUrl ?? "https://accounts.spotify.com/api/token"
-  });
+  const authStore =
+    dependencies.authStore ??
+    createSpotifyAuthStore({ workspaceRoot: dependencies.workspaceRoot });
+  const storedSession = await authStore.readSession();
+
+  if (!storedSession) {
+    throw new PlaylistIntakeError(
+      "Spotify playlist intake requires a connected Spotify account. Use Connect Spotify first.",
+      500
+    );
+  }
+
+  const authService =
+    dependencies.authService ?? createSpotifyAuthService({ fetchImpl });
+  let accessToken: string;
+
+  try {
+    const refreshedTokens = await authService.refreshAccessToken({
+      refreshToken: storedSession.refreshToken
+    });
+
+    accessToken = refreshedTokens.accessToken;
+
+    if (
+      refreshedTokens.refreshToken ||
+      refreshedTokens.scope !== storedSession.scope
+    ) {
+      await authStore.writeSession({
+        ...storedSession,
+        refreshToken: refreshedTokens.refreshToken ?? storedSession.refreshToken,
+        scope: refreshedTokens.scope ?? storedSession.scope
+      });
+    }
+  } catch (error) {
+    if (error instanceof SpotifyAuthConfigurationError) {
+      throw new PlaylistIntakeError(error.message, 500);
+    }
+
+    const message = error instanceof Error ? error.message : null;
+
+    if (message === "invalid_grant") {
+      await authStore.clearSession();
+
+      throw new PlaylistIntakeError(
+        "The connected Spotify account is no longer authorized. Reconnect Spotify and try again.",
+        500
+      );
+    }
+
+    throw new PlaylistIntakeError(
+      message ?? "Spotify authentication failed.",
+      502
+    );
+  }
+
   const authorizationHeaders = {
     Accept: "application/json; charset=utf-8",
     Authorization: `Bearer ${accessToken}`
@@ -271,45 +313,6 @@ function mapSpotifyPlaylistItem(
     title: canonicalTrack.title,
     version: canonicalTrack.mix.displayLabel
   };
-}
-
-async function fetchSpotifyAccessToken(input: {
-  clientId: string;
-  clientSecret: string;
-  fetchImpl: FetchLike;
-  tokenUrl: string;
-}) {
-  const response = await input.fetchImpl(input.tokenUrl, {
-    body: new URLSearchParams({
-      grant_type: "client_credentials"
-    }).toString(),
-    headers: {
-      Accept: "application/json; charset=utf-8",
-      Authorization: `Basic ${Buffer.from(
-        `${input.clientId}:${input.clientSecret}`
-      ).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    method: "POST"
-  });
-
-  if (!response.ok) {
-    throw new PlaylistIntakeError(
-      (await readErrorMessage(response)) ?? "Spotify authentication failed.",
-      502
-    );
-  }
-
-  const payload = (await response.json()) as SpotifyTokenPayload;
-
-  if (!payload.access_token) {
-    throw new PlaylistIntakeError(
-      "Spotify authentication response did not include an access token.",
-      502
-    );
-  }
-
-  return payload.access_token;
 }
 
 function cleanValue(value: string | null | undefined) {
