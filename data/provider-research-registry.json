@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastReviewed": "2026-03-31",
+  "lastReviewed": "2026-04-01",
   "orderingPolicy": {
     "freeDirectFirst": true,
     "beatportLastResortPaidFallback": true
@@ -48,6 +48,39 @@
         {
           "label": "Stream Rippers",
           "url": "https://help.soundcloud.com/hc/en-us/articles/115003448527"
+        }
+      ]
+    },
+    {
+      "id": "soundclouddl",
+      "name": "SoundCloudDL",
+      "scopeDecision": "in-scope-with-constraints",
+      "scopeRationale": "This is a browser-mediated free MP3 fallback for matched SoundCloud tracks when uploader-enabled downloads are unavailable, but it remains more fragile than direct authorized download surfaces and should stay behind direct SoundCloud acquisition.",
+      "implementationBucket": "free-auto",
+      "priorityRank": 15,
+      "sourceBasis": "uploader-enabled-download",
+      "accessTier": "free",
+      "integrationSurface": "browser-mediated",
+      "loginRequirement": "not-required",
+      "sessionRequirement": "not-required",
+      "stability": "fragile",
+      "sourceRationale": "The surface accepts a SoundCloud track URL and returns an MP3 download, making it useful as a secondary free fallback once the app already selected a matching SoundCloud track candidate.",
+      "acquisitionMode": "browser-submitted per-track MP3 conversion",
+      "automationApproach": "Search SoundCloud for exact track candidates, prefer matcher-selected extended/original mixes, then submit the chosen SoundCloud URL through the converter flow and capture the MP3 download.",
+      "automationConfidence": "medium",
+      "supportedFormats": [
+        "mp3"
+      ],
+      "djElectronicFit": "medium",
+      "notableRisks": [
+        "The HTML surface is fragile and may change selectors, response flows, or anti-bot controls without notice.",
+        "It only returns MP3, so higher-quality formats still need other providers.",
+        "This should remain behind direct SoundCloud downloads because the app is no longer receiving the uploader-exposed original asset."
+      ],
+      "officialReferences": [
+        {
+          "label": "SoundCloudDL home",
+          "url": "https://soundclouddl.cc/"
         }
       ]
     },

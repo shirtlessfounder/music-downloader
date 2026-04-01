@@ -64,6 +64,13 @@ the authenticated session metadata.
 Those browser profiles are stored inside the local workspace and can be
 refreshed later from the same panel if a provider session expires.
 
+Automatic free-source order currently runs:
+
+1. SoundCloud Direct Downloads
+2. SoundCloudDL
+3. Bandcamp
+4. Beatport paid review queue
+
 ## Run
 
 ```bash

@@ -41,6 +41,7 @@ Keep the existing narrative fields such as `scopeRationale`, `sourceRationale`, 
 | Source | Decision | Why |
 | --- | --- | --- |
 | SoundCloud Direct Downloads | `in-scope-with-constraints` | Uploader-controlled direct downloads; useful for exact track-level free acquisitions, but only where the artist turned downloads on. |
+| SoundCloudDL | `in-scope-with-constraints` | Browser-mediated MP3 fallback for already-matched SoundCloud tracks; keep it behind direct SoundCloud downloads because it is a more fragile conversion surface. |
 | Bandcamp | `in-scope-with-constraints` | Artist/label-controlled direct downloads with strong format support; keep the current product limited to free or already-owned entitlements unless paid scope expands. |
 | Juno Download | `defer` | Legitimate DJ store, but paid and redundant with the current Beatport-only paid fallback rule. |
 | Traxsource | `defer` | Legitimate DJ store, but also paid and therefore out of the current sequence. |

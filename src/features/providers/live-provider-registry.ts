@@ -6,6 +6,7 @@ import { createE2eFixtureProviderRegistry } from "@/features/e2e/e2e-fixtures";
 import { createBandcampProvider } from "./bandcamp";
 import { createBeatportProvider } from "./beatport";
 import { ProviderRegistry } from "./provider-registry";
+import { createSoundCloudDLProvider } from "./soundclouddl";
 import { createSoundCloudDirectDownloadsProvider } from "./soundcloud-direct-downloads";
 
 type CreateLiveProviderRegistryOptions = {
@@ -29,6 +30,7 @@ export function createLiveProviderRegistry(
 
   return new ProviderRegistry([
     createSoundCloudDirectDownloadsProvider({ browserSessionService }),
+    createSoundCloudDLProvider({ browserSessionService }),
     createBandcampProvider({ browserSessionService }),
     createBeatportProvider({ browserSessionService })
   ]);

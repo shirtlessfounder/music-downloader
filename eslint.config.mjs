@@ -6,6 +6,7 @@ export default defineConfig([
   ...nextCoreWebVitals,
   ...nextTypeScript,
   globalIgnores([
+    ".worktrees/**",
     ".next/**",
     "coverage/**",
     "playwright-report/**",
