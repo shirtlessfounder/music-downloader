@@ -46,6 +46,7 @@ export interface BrowserSessionServiceOptions {
 }
 
 export interface OpenBrowserSessionOptions {
+  headless?: boolean;
   sessionName: string;
   authState?: BrowserSessionAuthState;
 }
@@ -174,7 +175,7 @@ export class BrowserSessionService {
 
     const context = await this.#browserType.launchPersistentContext(sessionPaths.userDataDir, {
       acceptDownloads: true,
-      headless: true
+      headless: options.headless ?? true
     });
 
     const now = new Date().toISOString();
