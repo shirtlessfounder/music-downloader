@@ -2,12 +2,20 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { buildMissedArtifactSourceNote } from "@/features/artifacts/run-track-artifact-source-note";
+import {
+  buildAcquiredArtifactSourceNote,
+  buildMissedArtifactSourceNote
+} from "@/features/artifacts/run-track-artifact-source-note";
 import type {
+  ProviderArtifactMetadata,
   ProviderArtifactFormat,
   ProviderAuthorizationBasis,
   ProviderPriceTier
 } from "@/features/providers/provider-registry";
+import type {
+  TrackAcceptedDecision,
+  TrackAudioFormat
+} from "@/features/tracks/canonical-track";
 
 export const runStatuses = [
   "queued",
@@ -231,6 +239,11 @@ export type QueueRunTrackReviewInput = {
   summary: string;
 };
 
+export type CompletePurchasedRunTrackReviewInput = {
+  artifact: ProviderArtifactMetadata;
+  reviewId: string;
+};
+
 type RunAggregateRow = RunRow & {
   artifact_count: number;
   track_count: number;
@@ -257,9 +270,9 @@ const allowedRunTrackReviewStatusTransitions: Record<
   RunTrackReviewStatus,
   RunTrackReviewStatus[]
 > = {
-  approved: ["rejected", "purchased"],
+  approved: ["rejected"],
   purchased: [],
-  queued: ["approved", "rejected", "purchased"],
+  queued: ["approved", "rejected"],
   rejected: []
 };
 
@@ -570,6 +583,64 @@ export function createRunStore(options: RunStoreOptions = {}) {
     );
   }
 
+  function buildPurchasedReviewAcquisitionNote(
+    review: RunTrackReviewRow,
+    artifact: ProviderArtifactMetadata
+  ) {
+    return JSON.stringify(
+      buildAcquiredArtifactSourceNote({
+        artifact,
+        provider: {
+          authorizationBasis: review.authorization_basis,
+          priceTier: review.price_tier,
+          providerId: review.provider_key,
+          providerName: review.provider_name,
+          providerUrl: review.provider_url
+        },
+        selection: {
+          details:
+            "Beatport paid review confirmed the owned download and captured it for packaging.",
+          reason: resolvePurchasedReviewSelectionReason(review.mix_label),
+          selectedFormat: resolvePurchasedReviewSelectedFormat(
+            artifact.format,
+            review.available_formats
+          )
+        }
+      })
+    );
+  }
+
+  function resolvePurchasedReviewSelectionReason(
+    mixLabel: string | null
+  ): TrackAcceptedDecision["reason"] {
+    const normalizedMixLabel = mixLabel?.trim().toLowerCase();
+
+    if (normalizedMixLabel === "extended mix") {
+      return "accepted-extended-mix";
+    }
+
+    if (normalizedMixLabel === "original mix") {
+      return "accepted-original-mix";
+    }
+
+    return "accepted-base-version-fallback";
+  }
+
+  function resolvePurchasedReviewSelectedFormat(
+    artifactFormat: ProviderArtifactFormat,
+    availableFormats: string
+  ): TrackAudioFormat | null {
+    if (artifactFormat === "mp3" || artifactFormat === "wav") {
+      return artifactFormat;
+    }
+
+    const candidateFormat = (JSON.parse(availableFormats) as ProviderArtifactFormat[]).find(
+      (format): format is TrackAudioFormat => format === "mp3" || format === "wav"
+    );
+
+    return candidateFormat ?? null;
+  }
+
   function syncRunStatusForReviewQueue(runId: string, now: string) {
     const currentRun = getRunOrThrow(runId);
     const unresolvedReviews = database
@@ -580,7 +651,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
           INNER JOIN run_tracks
             ON run_tracks.id = run_track_reviews.run_track_id
           WHERE run_tracks.run_id = ?
-            AND run_track_reviews.status IN ('queued', 'approved', 'purchased')
+            AND run_track_reviews.status IN ('queued', 'approved')
         `
       )
       .get(runId) as { count: number };
@@ -756,6 +827,21 @@ export function createRunStore(options: RunStoreOptions = {}) {
         trackCount: summary.trackCount,
         updatedAt: summary.updatedAt
       };
+    },
+
+    listQueuedRunIds(): string[] {
+      const rows = database
+        .prepare(
+          `
+            SELECT id
+            FROM runs
+            WHERE status = 'queued'
+            ORDER BY updated_at ASC, created_at ASC
+          `
+        )
+        .all() as Array<{ id: string }>;
+
+      return rows.map((row) => row.id);
     },
 
     listRuns(limit = 10): RunSummary[] {
@@ -1092,11 +1178,88 @@ export function createRunStore(options: RunStoreOptions = {}) {
       return attempts.map(mapRunTrackAcquisitionAttempt);
     },
 
+    completePurchasedRunTrackReview(input: CompletePurchasedRunTrackReviewInput) {
+      const review = readRunTrackReview(input.reviewId);
+
+      if (!review) {
+        throw new Error(`Run track review not found: ${input.reviewId}`);
+      }
+
+      if (review.status !== "queued" && review.status !== "approved") {
+        throw new Error(
+          `Purchased reviews can only be completed from queued or approved status: ${review.status}`
+        );
+      }
+
+      const track = readRunTrack(review.run_track_id);
+
+      if (!track) {
+        throw new Error(`Run track not found: ${review.run_track_id}`);
+      }
+
+      const now = getTimestamp();
+      const note = buildPurchasedReviewAcquisitionNote(review, input.artifact);
+
+      database.exec("BEGIN");
+
+      try {
+        database
+          .prepare(
+            `
+              UPDATE run_track_reviews
+              SET status = ?,
+                  updated_at = ?
+              WHERE id = ?
+            `
+          )
+          .run("purchased", now, input.reviewId);
+        database
+          .prepare(
+            `
+              UPDATE run_tracks
+              SET status = ?,
+                  updated_at = ?
+              WHERE id = ?
+            `
+          )
+          .run("acquired", now, track.id);
+        insertAcquisitionAttemptDirect({
+          note,
+          now,
+          outcome: "matched",
+          providerKey: review.provider_key,
+          runTrackId: track.id
+        });
+        database
+          .prepare("UPDATE runs SET updated_at = ? WHERE id = ?")
+          .run(now, track.run_id);
+        syncRunStatusForReviewQueue(track.run_id, now);
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+
+      const updatedReview = readRunTrackReview(input.reviewId);
+
+      if (!updatedReview) {
+        throw new Error(`Run track review not found after update: ${input.reviewId}`);
+      }
+
+      return mapRunTrackReview(updatedReview);
+    },
+
     transitionRunTrackReviewStatus(
       reviewId: string,
       nextStatus: RunTrackReviewStatus
     ) {
       assertValidRunTrackReviewStatus(nextStatus);
+
+      if (nextStatus === "purchased") {
+        throw new Error(
+          "Use completePurchasedRunTrackReview to persist a purchased owned-download acquisition."
+        );
+      }
 
       const review = readRunTrackReview(reviewId);
 
@@ -1179,7 +1342,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
       const now = getTimestamp();
       const completedAt = nextStatus === "completed" ? now : null;
       const failedAt = nextStatus === "failed" ? now : null;
-      const resumeAfterStatus = nextStatus === "queued" ? currentRun.resume_after_status : null;
+      const resumeAfterStatus = currentRun.resume_after_status;
 
       database
         .prepare(
@@ -1209,6 +1372,49 @@ export function createRunStore(options: RunStoreOptions = {}) {
       }
 
       return run;
+    },
+
+    resumeRun(runId: string): RunDetail {
+      const currentRun = getRunOrThrow(runId);
+
+      if (currentRun.status !== "queued" || !currentRun.resume_after_status) {
+        const existingRun = this.getRun(runId);
+
+        if (!existingRun) {
+          throw new Error(`Run not found after resume lookup: ${runId}`);
+        }
+
+        return existingRun;
+      }
+
+      if (!resumableRunStatuses.includes(currentRun.resume_after_status)) {
+        throw new Error(
+          `Run cannot resume from persisted status: ${currentRun.resume_after_status}`
+        );
+      }
+
+      const now = getTimestamp();
+
+      database
+        .prepare(
+          `
+            UPDATE runs
+            SET status = ?,
+                updated_at = ?,
+                completed_at = NULL,
+                failed_at = NULL
+            WHERE id = ?
+          `
+        )
+        .run(currentRun.resume_after_status, now, runId);
+
+      const resumedRun = this.getRun(runId);
+
+      if (!resumedRun) {
+        throw new Error(`Run not found after resume: ${runId}`);
+      }
+
+      return resumedRun;
     },
 
     updateRunTrackStatus(trackId: string, nextStatus: RunTrackStatus): RunTrack {

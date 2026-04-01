@@ -205,6 +205,9 @@ export interface AutomaticProviderDefinition
 
 export interface ReviewQueueProviderDefinition
   extends BaseProviderDefinition<"review", "paid", "paid-review-queue"> {
+  acquirePurchased(
+    input: ProviderAcquireInput
+  ): Promise<ProviderAcquisitionResult>;
   queueForReview(
     input: ProviderReviewQueueInput
   ): Promise<ProviderReviewQueueResult>;

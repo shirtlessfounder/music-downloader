@@ -82,6 +82,73 @@ function buildMatchingCandidate(
 }
 
 describe("createRunWorker", () => {
+  it("automatically schedules persisted queued runs when the worker boots after a restart", async () => {
+    const tempWorkspace = createTempWorkspace();
+    let initialStore: RunStore | undefined;
+    let resumedStore: RunStore | undefined;
+
+    try {
+      initialStore = createRunStore({
+        databasePath: tempWorkspace.databasePath
+      });
+
+      const interruptedRun = createQueuedRun(
+        initialStore,
+        "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
+        [
+          {
+            artist: "Anyma",
+            sourcePosition: 1,
+            title: "Consciousness",
+            version: "Extended Mix"
+          }
+        ]
+      );
+
+      initialStore.transitionRunStatus(interruptedRun.id, "ingesting");
+      initialStore.transitionRunStatus(interruptedRun.id, "matching");
+      initialStore.close();
+      initialStore = undefined;
+
+      resumedStore = createRunStore({
+        databasePath: tempWorkspace.databasePath
+      });
+
+      const processQueuedRun = vi.fn(async (runId: string) => {
+        expect(resumedStore?.getRunStatusSnapshot(runId)).toEqual(
+          expect.objectContaining({
+            resumeAfterStatus: "matching",
+            status: "queued"
+          })
+        );
+
+        resumedStore?.transitionRunStatus(runId, "ingesting");
+        resumedStore?.transitionRunStatus(runId, "matching");
+        resumedStore?.transitionRunStatus(runId, "failed");
+
+        return resumedStore?.getRun(runId) ?? null;
+      });
+
+      const worker = createRunWorker({
+        processQueuedRun: processQueuedRun as typeof executeQueuedRun,
+        runStore: resumedStore
+      });
+
+      await worker.waitForIdle();
+
+      expect(processQueuedRun).toHaveBeenCalledTimes(1);
+      expect(resumedStore.getRun(interruptedRun.id)).toEqual(
+        expect.objectContaining({
+          status: "failed"
+        })
+      );
+    } finally {
+      initialStore?.close();
+      resumedStore?.close();
+      tempWorkspace.cleanup();
+    }
+  });
+
   it("drains queued runs through the existing orchestration lifecycle", async () => {
     const tempWorkspace = createTempWorkspace();
     const runStore = createRunStore({ databasePath: tempWorkspace.databasePath });

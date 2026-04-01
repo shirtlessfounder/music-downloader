@@ -6,6 +6,8 @@ import { queueLiveRunFromPlaylistUrl } from "@/features/runs/live-run-orchestrat
 import { getSharedRunWorker } from "@/features/runs/run-worker";
 
 export async function GET() {
+  getSharedRunWorker();
+
   return NextResponse.json(getRunStore().listRuns());
 }
 

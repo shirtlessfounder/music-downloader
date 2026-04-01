@@ -3,6 +3,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 
 import { render, screen } from "@testing-library/react";
+import { resetSharedRunWorkerForTests } from "@/features/runs/run-worker";
 
 async function withTempDatabase(callback: (databasePath: string) => Promise<void>) {
   const tempDirectory = mkdtempSync(path.join(tmpdir(), "music-downloader-page-"));
@@ -22,6 +23,14 @@ async function withTempDatabase(callback: (databasePath: string) => Promise<void
 }
 
 describe("HomePage", () => {
+  beforeEach(() => {
+    resetSharedRunWorkerForTests();
+  });
+
+  afterEach(() => {
+    resetSharedRunWorkerForTests();
+  });
+
   it("forces live home-page rendering against the SQLite run store", async () => {
     vi.resetModules();
 
