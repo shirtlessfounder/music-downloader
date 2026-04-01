@@ -14,7 +14,7 @@ import {
 } from "@/features/runs/run-store";
 import type { TrackAcceptedDecision, TrackAudioFormat } from "@/features/tracks/canonical-track";
 import type {
-  ProviderAuthorizationBasis,
+  ProviderSourceBasis,
   ProviderPriceTier,
   ProviderProvenance
 } from "@/features/providers/provider-registry";
@@ -23,7 +23,7 @@ export type RunReportTrackResolution =
   | {
       details: string;
       provider: {
-        authorizationBasis: ProviderAuthorizationBasis;
+        sourceBasis: ProviderSourceBasis;
         discoveredVia: ProviderProvenance["discoveredVia"] | null;
         name: string;
         priceTier: ProviderPriceTier;
@@ -203,7 +203,7 @@ function mapRunReportTrackResolution(
     return {
       details: note.selection.details,
       provider: {
-        authorizationBasis: note.provider.authorizationBasis,
+        sourceBasis: note.provider.sourceBasis,
         discoveredVia: note.provider.discoveredVia ?? null,
         name: note.provider.providerName,
         priceTier: note.provider.priceTier,

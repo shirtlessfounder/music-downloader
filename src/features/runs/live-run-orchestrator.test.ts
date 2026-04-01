@@ -83,7 +83,7 @@ function buildMatchingCandidate(
 ): ProviderCandidate {
   return {
     artistName: track.artist,
-    authorizationBasis: provider.authorizationBasis,
+    sourceBasis: provider.sourceBasis,
     availableFormats: ["mp3"],
     candidateId: `${provider.id}-${track.sourcePosition}`,
     durationSeconds: track.version ? 392 : 301,
@@ -111,7 +111,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const bandcampProvider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],
@@ -225,7 +225,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const soundCloudProvider = defineAutomaticProvider({
       id: "soundcloud-direct-downloads",
       displayName: "SoundCloud Direct Downloads",
-      authorizationBasis: "uploader-enabled-download",
+      sourceBasis: "uploader-enabled-download",
       priceTier: "free",
       priorityRank: 10,
       supportedFormats: ["original-upload-format"],
@@ -237,7 +237,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           providerId: "soundcloud-direct-downloads",
           providerName: "SoundCloud Direct Downloads",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         });
       },
       acquire: async () => {
@@ -247,7 +247,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const bandcampProvider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],
@@ -397,7 +397,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const soundCloudProvider = defineAutomaticProvider({
       id: "soundcloud-direct-downloads",
       displayName: "SoundCloud Direct Downloads",
-      authorizationBasis: "uploader-enabled-download",
+      sourceBasis: "uploader-enabled-download",
       priceTier: "free",
       priorityRank: 10,
       supportedFormats: ["original-upload-format"],
@@ -427,7 +427,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           providerId: "soundcloud-direct-downloads",
           providerName: "SoundCloud Direct Downloads",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         });
       },
       acquire: async ({ candidate, track }) => {
@@ -456,7 +456,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const bandcampProvider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],
@@ -466,7 +466,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           providerId: "bandcamp",
           providerName: "Bandcamp",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         }),
       acquire: async () => {
         throw new Error("Bandcamp acquire should not run after a miss.");
@@ -523,7 +523,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
         expect.objectContaining({
           outcome: "missed",
           miss: expect.objectContaining({
-            reason: "no-authorized-source-match"
+            reason: "no-supported-source-match"
           })
         })
       );
@@ -565,7 +565,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const soundCloudProvider = defineAutomaticProvider({
       id: "soundcloud-direct-downloads",
       displayName: "SoundCloud Direct Downloads",
-      authorizationBasis: "uploader-enabled-download",
+      sourceBasis: "uploader-enabled-download",
       priceTier: "free",
       priorityRank: 10,
       supportedFormats: ["original-upload-format"],
@@ -575,7 +575,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           providerId: "soundcloud-direct-downloads",
           providerName: "SoundCloud Direct Downloads",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         }),
       acquire: async () => {
         throw new Error("SoundCloud acquire should not run after a miss.");
@@ -584,7 +584,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const bandcampProvider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],
@@ -594,7 +594,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           providerId: "bandcamp",
           providerName: "Bandcamp",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         }),
       acquire: async () => {
         throw new Error("Bandcamp acquire should not run after a miss.");
@@ -603,7 +603,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const beatportProvider = defineReviewQueueProvider({
       id: "beatport",
       displayName: "Beatport",
-      authorizationBasis: "purchase-entitlement",
+      sourceBasis: "purchase-entitlement",
       priorityRank: 90,
       supportedFormats: ["mp3", "wav", "aiff"],
       search: async ({ track }) => ({
@@ -611,7 +611,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
         candidates: [
           {
             artistName: track.primaryArtist ?? "Unknown Artist",
-            authorizationBasis: "purchase-entitlement",
+            sourceBasis: "purchase-entitlement",
             availableFormats: ["mp3", "wav"],
             candidateId: `beatport-${track.normalizedTitle}`,
             durationSeconds: track.durationSeconds ?? 301,
@@ -803,7 +803,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const soundCloudProvider = defineAutomaticProvider({
       id: "soundcloud-direct-downloads",
       displayName: "SoundCloud Direct Downloads",
-      authorizationBasis: "uploader-enabled-download",
+      sourceBasis: "uploader-enabled-download",
       priceTier: "free",
       priorityRank: 10,
       supportedFormats: ["original-upload-format"],
@@ -822,7 +822,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
     const bandcampProvider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],
@@ -832,7 +832,7 @@ describe("submitLiveRunFromPlaylistUrl", () => {
           providerId: "bandcamp",
           providerName: "Bandcamp",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         }),
       acquire: async () => {
         throw new Error("Bandcamp acquire should not run after a miss.");

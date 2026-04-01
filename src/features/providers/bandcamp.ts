@@ -95,7 +95,7 @@ export function createBandcampProvider(
   return defineAutomaticProvider({
     id: BANDCAMP_PROVIDER_ID,
     displayName: BANDCAMP_PROVIDER_NAME,
-    authorizationBasis: "rights-holder-storefront",
+    sourceBasis: "rights-holder-storefront",
     priceTier: "free-or-owned",
     priorityRank: 20,
     supportedFormats: ["mp3", "wav", "aiff", "flac", "aac", "ogg-vorbis", "alac"],
@@ -146,7 +146,7 @@ async function searchBandcamp(input: {
           providerId: BANDCAMP_PROVIDER_ID,
           providerName: BANDCAMP_PROVIDER_NAME,
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         });
       }
 
@@ -189,8 +189,8 @@ async function searchBandcamp(input: {
           detail: unauthorizedDetail,
           providerId: BANDCAMP_PROVIDER_ID,
           providerName: BANDCAMP_PROVIDER_NAME,
-          reason: "no-authorized-candidate",
-          trackMissReason: "no-authorized-source-match"
+          reason: "no-supported-candidate",
+          trackMissReason: "no-supported-source-match"
         });
       }
 
@@ -199,8 +199,8 @@ async function searchBandcamp(input: {
           detail: unavailableFormatDetail,
           providerId: BANDCAMP_PROVIDER_ID,
           providerName: BANDCAMP_PROVIDER_NAME,
-          reason: "no-authorized-candidate",
-          trackMissReason: "no-authorized-source-match"
+          reason: "no-supported-candidate",
+          trackMissReason: "no-supported-source-match"
         });
       }
 
@@ -210,7 +210,7 @@ async function searchBandcamp(input: {
         providerId: BANDCAMP_PROVIDER_ID,
         providerName: BANDCAMP_PROVIDER_NAME,
         reason: "no-search-results",
-        trackMissReason: "no-authorized-source-match"
+        trackMissReason: "no-supported-source-match"
       });
     });
   } catch (error) {
@@ -824,7 +824,7 @@ function buildCandidate(
 
   return {
     artistName: candidateTrack.primaryArtist ?? snapshot.artistName ?? "Unknown Artist",
-    authorizationBasis: "rights-holder-storefront",
+    sourceBasis: "rights-holder-storefront",
     availableFormats,
     candidateId: snapshot.providerTrackId ?? snapshot.providerUrl,
     durationSeconds: snapshot.durationSeconds,

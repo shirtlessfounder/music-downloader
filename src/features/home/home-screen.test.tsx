@@ -39,7 +39,7 @@ describe("HomeScreen", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: /authorized-source acquisition/i })
+      screen.getByRole("heading", { name: /playlist acquisition/i })
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/playlist url/i)).toBeVisible();
     expect(
@@ -50,7 +50,7 @@ describe("HomeScreen", () => {
     expect(screen.getAllByText(/no runs yet/i)).toHaveLength(2);
     expect(
       screen.getByText(
-        /let the local orchestrator ingest tracks, match authorized sources, package artifacts, and open beatport review/i
+        /let the local orchestrator ingest tracks, match providers, package artifacts, and open beatport review/i
       )
     ).toBeVisible();
     expect(

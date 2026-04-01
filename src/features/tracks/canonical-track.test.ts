@@ -207,7 +207,7 @@ describe("buildMissDecision", () => {
       outcome: "miss",
       reason: "no-eligible-candidate",
       selectedFormat: null,
-      details: "No authorized candidate met the selection rules."
+      details: "No supported candidate met the selection rules."
     });
   });
 });

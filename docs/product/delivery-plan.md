@@ -28,7 +28,7 @@ Use this as the repo-local execution brief.
 
 ## Authorized-Source Research Registry
 
-- Source of truth: `data/authorized-source-research-registry.json`
+- Source of truth: `data/provider-research-registry.json`
 - Usage guide: `docs/product/provider-research-registry.md`
 - Later provider tasks should only implement entries marked `in-scope-with-constraints` or `required-fallback`
 - Keep `free-auto` entries ahead of any paid flow, and keep Beatport as the last-resort paid fallback queue

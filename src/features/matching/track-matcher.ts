@@ -123,7 +123,7 @@ export function matchTrackCandidates(input: {
   if (accepted.length === 0) {
     return {
       miss: buildMissDecision(
-        matchedRequestedTrack ? "no-eligible-candidate" : "no-authorized-source-match"
+        matchedRequestedTrack ? "no-eligible-candidate" : "no-supported-source-match"
       ),
       outcome: "miss",
       rejected

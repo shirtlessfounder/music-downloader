@@ -62,7 +62,7 @@ function buildMatchingCandidate(
 ): ProviderCandidate {
   return {
     artistName: track.artist,
-    authorizationBasis: provider.authorizationBasis,
+    sourceBasis: provider.sourceBasis,
     availableFormats: ["mp3"],
     candidateId: `${provider.id}-${track.sourcePosition}`,
     durationSeconds: track.version ? 392 : 301,
@@ -156,7 +156,7 @@ describe("createRunWorker", () => {
     const bandcampProvider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],

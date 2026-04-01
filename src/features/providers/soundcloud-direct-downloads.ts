@@ -86,7 +86,7 @@ export function createSoundCloudDirectDownloadsProvider(
   return defineAutomaticProvider({
     id: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
     displayName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-    authorizationBasis: "uploader-enabled-download",
+    sourceBasis: "uploader-enabled-download",
     priceTier: "free",
     priorityRank: 10,
     supportedFormats: ["original-upload-format"],
@@ -139,7 +139,7 @@ async function searchSoundCloudDirectDownloads(input: {
           providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
           providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         });
       }
 
@@ -182,8 +182,8 @@ async function searchSoundCloudDirectDownloads(input: {
           detail: formatUnavailableDetail,
           providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
           providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-          reason: "no-authorized-candidate",
-          trackMissReason: "no-authorized-source-match"
+          reason: "no-supported-candidate",
+          trackMissReason: "no-supported-source-match"
         });
       }
 
@@ -192,8 +192,8 @@ async function searchSoundCloudDirectDownloads(input: {
           detail: unauthorizedDetail,
           providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
           providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-          reason: "no-authorized-candidate",
-          trackMissReason: "no-authorized-source-match"
+          reason: "no-supported-candidate",
+          trackMissReason: "no-supported-source-match"
         });
       }
 
@@ -203,7 +203,7 @@ async function searchSoundCloudDirectDownloads(input: {
         providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
         providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
         reason: "no-search-results",
-        trackMissReason: "no-authorized-source-match"
+        trackMissReason: "no-supported-source-match"
       });
     });
   } catch (error) {
@@ -654,7 +654,7 @@ function buildCandidate(
 
   return {
     artistName: candidateTrack.primaryArtist ?? snapshot.artistName ?? "Unknown Artist",
-    authorizationBasis: "uploader-enabled-download",
+    sourceBasis: "uploader-enabled-download",
     availableFormats,
     candidateId: snapshot.providerTrackId ?? snapshot.providerUrl,
     durationSeconds: snapshot.durationSeconds,

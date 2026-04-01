@@ -15,7 +15,7 @@ import {
   defineAutomaticProvider,
   defineReviewQueueProvider,
   type ProviderArtifactFormat,
-  type ProviderAuthorizationBasis,
+  type ProviderSourceBasis,
   type ProviderCandidate,
   type ProviderPriceTier
 } from "@/features/providers/provider-registry";
@@ -96,7 +96,7 @@ export function createE2eFixtureProviderRegistry(
   const soundCloudProvider = defineAutomaticProvider({
     id: "soundcloud-direct-downloads",
     displayName: "SoundCloud Direct Downloads",
-    authorizationBasis: "uploader-enabled-download",
+    sourceBasis: "uploader-enabled-download",
     priceTier: "free",
     priorityRank: 10,
     supportedFormats: ["original-upload-format"],
@@ -110,7 +110,7 @@ export function createE2eFixtureProviderRegistry(
           outcome: "candidates" as const,
           candidates: [
             buildFixtureCandidate({
-              authorizationBasis: "uploader-enabled-download",
+              sourceBasis: "uploader-enabled-download",
               availableFormats: ["mp3"],
               candidateId: "soundcloud-201",
               durationSeconds: 392,
@@ -154,7 +154,7 @@ export function createE2eFixtureProviderRegistry(
   const bandcampProvider = defineAutomaticProvider({
     id: "bandcamp",
     displayName: "Bandcamp",
-    authorizationBasis: "rights-holder-storefront",
+    sourceBasis: "rights-holder-storefront",
     priceTier: "free-or-owned",
     priorityRank: 20,
     supportedFormats: ["mp3", "wav", "flac"],
@@ -164,7 +164,7 @@ export function createE2eFixtureProviderRegistry(
           outcome: "candidates" as const,
           candidates: [
             buildFixtureCandidate({
-              authorizationBasis: "rights-holder-storefront",
+              sourceBasis: "rights-holder-storefront",
               availableFormats: ["mp3", "wav"],
               candidateId: "bandcamp-301",
               durationSeconds: 301,
@@ -208,7 +208,7 @@ export function createE2eFixtureProviderRegistry(
   const beatportProvider = defineReviewQueueProvider({
     id: "beatport",
     displayName: "Beatport",
-    authorizationBasis: "purchase-entitlement",
+    sourceBasis: "purchase-entitlement",
     priorityRank: 90,
     supportedFormats: ["mp3", "wav", "aiff"],
     search: async ({ track }) => {
@@ -222,7 +222,7 @@ export function createE2eFixtureProviderRegistry(
           outcome: "candidates" as const,
           candidates: [
             buildFixtureCandidate({
-              authorizationBasis: "purchase-entitlement",
+              sourceBasis: "purchase-entitlement",
               availableFormats: ["mp3", "wav"],
               candidateId: `beatport-${track.normalizedTitle}`,
               durationSeconds: track.durationSeconds ?? 301,
@@ -404,7 +404,7 @@ async function seedSpotifyHappyPath(input: {
       buildAcquiredArtifactSourceNote({
         artifact: firstArtifact,
         provider: {
-          authorizationBasis: "uploader-enabled-download",
+          sourceBasis: "uploader-enabled-download",
           candidateId: "soundcloud-201",
           discoveredVia: "search",
           priceTier: "free",
@@ -430,7 +430,7 @@ async function seedSpotifyHappyPath(input: {
       buildAcquiredArtifactSourceNote({
         artifact: secondArtifact,
         provider: {
-          authorizationBasis: "rights-holder-storefront",
+          sourceBasis: "rights-holder-storefront",
           candidateId: "bandcamp-301",
           discoveredVia: "catalog",
           priceTier: "free",
@@ -498,7 +498,7 @@ function seedSoundCloudMissHeavy(input: { runStore: RunStore }) {
           detail: "No authorized direct-download source matched the required version.",
           providerId: "track-matcher",
           providerName: "Track matcher",
-          reason: "no-authorized-source-match"
+          reason: "no-supported-source-match"
         }
       })
     ),
@@ -508,7 +508,7 @@ function seedSoundCloudMissHeavy(input: { runStore: RunStore }) {
   });
 
   input.runStore.queueRunTrackReview({
-    authorizationBasis: "purchase-entitlement",
+    sourceBasis: "purchase-entitlement",
     availableFormats: ["mp3", "wav"],
     candidateId: "beatport-queue-1",
     mixLabel: "Extended Mix",
@@ -521,7 +521,7 @@ function seedSoundCloudMissHeavy(input: { runStore: RunStore }) {
     summary: "Queued after all automatic free-source providers missed."
   });
   const rejectedReview = input.runStore.queueRunTrackReview({
-    authorizationBasis: "purchase-entitlement",
+    sourceBasis: "purchase-entitlement",
     availableFormats: ["mp3"],
     candidateId: "beatport-queue-2",
     mixLabel: null,
@@ -610,7 +610,7 @@ function requireRun(runStore: RunStore, runId: string): RunDetail {
 }
 
 function buildFixtureCandidate(input: {
-  authorizationBasis: ProviderAuthorizationBasis;
+  sourceBasis: ProviderSourceBasis;
   availableFormats: readonly ProviderArtifactFormat[];
   candidateId: string;
   durationSeconds: number;
@@ -622,7 +622,7 @@ function buildFixtureCandidate(input: {
 }): ProviderCandidate {
   return {
     artistName: input.track.primaryArtist ?? "Unknown Artist",
-    authorizationBasis: input.authorizationBasis,
+    sourceBasis: input.sourceBasis,
     availableFormats: input.availableFormats,
     candidateId: input.candidateId,
     durationSeconds: input.durationSeconds,
@@ -657,7 +657,7 @@ function buildFixtureSearchMiss(input: {
     providerId: input.providerId,
     providerName: input.providerName,
     reason: "no-search-results",
-    trackMissReason: "no-authorized-source-match"
+    trackMissReason: "no-supported-source-match"
   });
 }
 

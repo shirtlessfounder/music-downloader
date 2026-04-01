@@ -97,7 +97,7 @@ describe("/api/runs/[runId]/artifacts", () => {
               sizeBytes: acquiredFileBody.length
             },
             provider: {
-              authorizationBasis: "uploader-enabled-download",
+              sourceBasis: "uploader-enabled-download",
               candidateId: "sc-track-201",
               discoveredVia: "search",
               priceTier: "free",

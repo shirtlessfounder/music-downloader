@@ -295,11 +295,11 @@ export function HomeScreen({
       <header className="hero">
         <div>
           <p className="hero-kicker">Local operator shell</p>
-          <h1>Authorized-source acquisition</h1>
+          <h1>Playlist acquisition</h1>
           <p className="hero-copy">
             Queue one Spotify or SoundCloud playlist and let the local
-            orchestrator ingest tracks, match authorized sources, package
-            artifacts, and open Beatport review when paid fallback is required.
+            orchestrator ingest tracks, match providers, package artifacts, and
+            open Beatport review when paid fallback is required.
           </p>
         </div>
         <div className="hero-sidecar">

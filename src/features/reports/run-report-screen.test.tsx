@@ -38,10 +38,10 @@ describe("RunReportScreen", () => {
 
     expect(screen.getAllByText(/missed/i).length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(/no-authorized-source-match/i).length
+      screen.getAllByText(/no-supported-source-match/i).length
     ).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(/no authorized source matched the requested track/i).length
+      screen.getAllByText(/no supported source matched the requested track/i).length
     ).toBeGreaterThan(0);
     expect(screen.getByText(/3 misses/i)).toBeVisible();
   });
@@ -129,7 +129,7 @@ function buildCompletedReport() {
         resolution: {
           details: "Extended Mix matched the highest-priority mix preference.",
           provider: {
-            authorizationBasis: "uploader-enabled-download",
+            sourceBasis: "uploader-enabled-download",
             name: "SoundCloud Direct Downloads",
             priceTier: "free",
             url: "https://soundcloud.com/anyma/consciousness"
@@ -152,8 +152,8 @@ function buildCompletedReport() {
           providerKey: "track-matcher"
         },
         resolution: {
-          details: "No authorized source matched the requested track.",
-          reason: "no-authorized-source-match",
+          details: "No supported source matched the requested track.",
+          reason: "no-supported-source-match",
           type: "miss"
         },
         sourcePosition: 2,
@@ -183,8 +183,8 @@ function buildMissHeavyReport() {
           providerKey: "track-matcher"
         },
         resolution: {
-          details: "No authorized source matched the requested track.",
-          reason: "no-authorized-source-match",
+          details: "No supported source matched the requested track.",
+          reason: "no-supported-source-match",
           type: "miss"
         },
         sourcePosition: 1,
@@ -201,8 +201,8 @@ function buildMissHeavyReport() {
           providerKey: "track-matcher"
         },
         resolution: {
-          details: "No authorized source matched the requested track.",
-          reason: "no-authorized-source-match",
+          details: "No supported source matched the requested track.",
+          reason: "no-supported-source-match",
           type: "miss"
         },
         sourcePosition: 2,
@@ -219,8 +219,8 @@ function buildMissHeavyReport() {
           providerKey: "track-matcher"
         },
         resolution: {
-          details: "No authorized source matched the requested track.",
-          reason: "no-authorized-source-match",
+          details: "No supported source matched the requested track.",
+          reason: "no-supported-source-match",
           type: "miss"
         },
         sourcePosition: 3,

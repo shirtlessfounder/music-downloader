@@ -32,7 +32,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
       defineReviewQueueProvider({
         id: "beatport",
         displayName: "Beatport",
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         priorityRank: 90,
         supportedFormats: ["mp3", "wav", "aiff"],
         search: async () =>
@@ -41,7 +41,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
             providerId: "beatport",
             providerName: "Beatport",
             reason: "no-search-results",
-            trackMissReason: "no-authorized-source-match"
+            trackMissReason: "no-supported-source-match"
           }),
         acquirePurchased: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -63,7 +63,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
       defineAutomaticProvider({
         id: "bandcamp",
         displayName: "Bandcamp",
-        authorizationBasis: "rights-holder-storefront",
+        sourceBasis: "rights-holder-storefront",
         priceTier: "free-or-owned",
         priorityRank: 20,
         supportedFormats: ["mp3", "wav", "flac"],
@@ -73,7 +73,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
             providerId: "bandcamp",
             providerName: "Bandcamp",
             reason: "no-search-results",
-            trackMissReason: "no-authorized-source-match"
+            trackMissReason: "no-supported-source-match"
           }),
         acquire: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -99,7 +99,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
 
     expect(provider).toEqual(
       expect.objectContaining({
-        authorizationBasis: "uploader-enabled-download",
+        sourceBasis: "uploader-enabled-download",
         displayName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
         id: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
         implementationBucket: "free-auto",
@@ -155,7 +155,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
           candidates: [
             {
               artistName: "DJ Sealer",
-              authorizationBasis: "uploader-enabled-download",
+              sourceBasis: "uploader-enabled-download",
               availableFormats: ["mp3"],
               candidateId: "111",
               durationSeconds: 392,
@@ -267,8 +267,8 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
           miss: expect.objectContaining({
             providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
             providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-            reason: "no-authorized-candidate",
-            trackMissReason: "no-authorized-source-match"
+            reason: "no-supported-candidate",
+            trackMissReason: "no-supported-source-match"
           })
         });
         if (result.outcome !== "miss") {
@@ -341,8 +341,8 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
           miss: expect.objectContaining({
             providerId: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_ID,
             providerName: SOUNDCLOUD_DIRECT_DOWNLOADS_PROVIDER_NAME,
-            reason: "no-authorized-candidate",
-            trackMissReason: "no-authorized-source-match"
+            reason: "no-supported-candidate",
+            trackMissReason: "no-supported-source-match"
           })
         });
         if (result.outcome !== "miss") {
@@ -545,7 +545,7 @@ describe("createSoundCloudDirectDownloadsProvider", () => {
 
         const candidate: ProviderCandidate = {
           artistName: "DJ Sealer",
-          authorizationBasis: "uploader-enabled-download",
+          sourceBasis: "uploader-enabled-download",
           availableFormats: ["original-upload-format"],
           candidateId: "111",
           durationSeconds: 392,

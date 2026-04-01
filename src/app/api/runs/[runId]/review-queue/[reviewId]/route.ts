@@ -129,7 +129,7 @@ function buildRequestedTrackTitle(track: RunTrack) {
 function buildReviewCandidate(review: RunTrackReview, track: RunTrack) {
   return {
     artistName: track.artist,
-    authorizationBasis: review.authorizationBasis,
+    sourceBasis: review.sourceBasis,
     availableFormats: review.availableFormats,
     candidateId: review.candidateId,
     durationSeconds: null,

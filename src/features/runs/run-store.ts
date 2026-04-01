@@ -9,7 +9,7 @@ import {
 import type {
   ProviderArtifactMetadata,
   ProviderArtifactFormat,
-  ProviderAuthorizationBasis,
+  ProviderSourceBasis,
   ProviderPriceTier
 } from "@/features/providers/provider-registry";
 import type {
@@ -103,7 +103,7 @@ type AcquisitionAttemptRow = {
 };
 
 type RunTrackReviewRow = {
-  authorization_basis: ProviderAuthorizationBasis;
+  source_basis: ProviderSourceBasis;
   available_formats: string;
   candidate_id: string;
   created_at: string;
@@ -164,7 +164,7 @@ export type RunTrackAcquisitionAttempt = {
 };
 
 export type RunTrackReview = {
-  authorizationBasis: ProviderAuthorizationBasis;
+  sourceBasis: ProviderSourceBasis;
   availableFormats: ProviderArtifactFormat[];
   candidateId: string;
   createdAt: string;
@@ -226,7 +226,7 @@ export type RecordRunArtifactInput = {
 };
 
 export type QueueRunTrackReviewInput = {
-  authorizationBasis: ProviderAuthorizationBasis;
+  sourceBasis: ProviderSourceBasis;
   availableFormats: ProviderArtifactFormat[];
   candidateId: string;
   mixLabel?: string | null;
@@ -286,6 +286,13 @@ const migrations = [
     path: path.join(
       process.cwd(),
       "src/features/runs/migrations/0002-run-track-review-queue.sql"
+    )
+  },
+  {
+    name: "0003-run-track-review-source-basis",
+    path: path.join(
+      process.cwd(),
+      "src/features/runs/migrations/0003-run-track-review-source-basis.sql"
     )
   }
 ] as const;
@@ -359,7 +366,7 @@ function mapRunTrackAcquisitionAttempt(
 
 function mapRunTrackReview(row: RunTrackReviewRow): RunTrackReview {
   return {
-    authorizationBasis: row.authorization_basis,
+    sourceBasis: row.source_basis,
     availableFormats: JSON.parse(row.available_formats) as ProviderArtifactFormat[],
     candidateId: row.candidate_id,
     createdAt: row.created_at,
@@ -591,7 +598,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
       buildAcquiredArtifactSourceNote({
         artifact,
         provider: {
-          authorizationBasis: review.authorization_basis,
+          sourceBasis: review.source_basis,
           priceTier: review.price_tier,
           providerId: review.provider_key,
           providerName: review.provider_name,
@@ -952,7 +959,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
                 provider_key,
                 provider_name,
                 provider_url,
-                authorization_basis,
+                source_basis,
                 price_tier,
                 candidate_id,
                 mix_label,
@@ -972,7 +979,7 @@ export function createRunStore(options: RunStoreOptions = {}) {
             input.providerKey,
             input.providerName,
             input.providerUrl ?? null,
-            input.authorizationBasis,
+            input.sourceBasis,
             input.priceTier,
             input.candidateId,
             input.mixLabel ?? null,

@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Music Downloader",
   description:
-    "Local authorized-source playlist acquisition workspace for DJ and electronic workflows."
+    "Local playlist acquisition workspace for DJ and electronic workflows."
 };
 
 type RootLayoutProps = {

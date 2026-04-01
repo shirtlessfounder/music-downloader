@@ -33,7 +33,7 @@ describe("createBandcampProvider", () => {
       defineReviewQueueProvider({
         id: "beatport",
         displayName: "Beatport",
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         priorityRank: 90,
         supportedFormats: ["mp3", "wav", "aiff"],
         search: async () =>
@@ -42,7 +42,7 @@ describe("createBandcampProvider", () => {
             providerId: "beatport",
             providerName: "Beatport",
             reason: "no-search-results",
-            trackMissReason: "no-authorized-source-match"
+            trackMissReason: "no-supported-source-match"
           }),
         acquirePurchased: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -64,7 +64,7 @@ describe("createBandcampProvider", () => {
       defineAutomaticProvider({
         id: "soundcloud-direct-downloads",
         displayName: "SoundCloud Direct Downloads",
-        authorizationBasis: "uploader-enabled-download",
+        sourceBasis: "uploader-enabled-download",
         priceTier: "free",
         priorityRank: 10,
         supportedFormats: ["original-upload-format"],
@@ -73,8 +73,8 @@ describe("createBandcampProvider", () => {
             detail: "No SoundCloud direct download is available for the requested track.",
             providerId: "soundcloud-direct-downloads",
             providerName: "SoundCloud Direct Downloads",
-            reason: "no-authorized-candidate",
-            trackMissReason: "no-authorized-source-match"
+            reason: "no-supported-candidate",
+            trackMissReason: "no-supported-source-match"
           }),
         acquire: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -100,7 +100,7 @@ describe("createBandcampProvider", () => {
 
     expect(provider).toEqual(
       expect.objectContaining({
-        authorizationBasis: "rights-holder-storefront",
+        sourceBasis: "rights-holder-storefront",
         displayName: BANDCAMP_PROVIDER_NAME,
         id: BANDCAMP_PROVIDER_ID,
         implementationBucket: "free-auto",
@@ -182,7 +182,7 @@ describe("createBandcampProvider", () => {
           candidates: [
             {
               artistName: "DJ Sealer",
-              authorizationBasis: "rights-holder-storefront",
+              sourceBasis: "rights-holder-storefront",
               availableFormats: ["mp3", "wav", "flac"],
               candidateId: "bandcamp-track-111",
               durationSeconds: 392,
@@ -388,8 +388,8 @@ describe("createBandcampProvider", () => {
         miss: expect.objectContaining({
           providerId: BANDCAMP_PROVIDER_ID,
           providerName: BANDCAMP_PROVIDER_NAME,
-          reason: "no-authorized-candidate",
-          trackMissReason: "no-authorized-source-match"
+          reason: "no-supported-candidate",
+          trackMissReason: "no-supported-source-match"
         })
       });
 
@@ -435,7 +435,7 @@ describe("createBandcampProvider", () => {
     });
     const candidate: ProviderCandidate = {
       artistName: "DJ Sealer",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       availableFormats: ["mp3", "wav"],
       candidateId: "bandcamp-track-111",
       durationSeconds: 392,

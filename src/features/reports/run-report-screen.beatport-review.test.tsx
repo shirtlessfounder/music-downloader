@@ -64,7 +64,7 @@ function buildBeatportReviewReport() {
     playlistUrl: "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9",
     reviewQueue: [
       {
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
         candidateId: "beatport-queue-1",
         createdAt: "2026-03-31T14:05:00.000Z",
@@ -88,7 +88,7 @@ function buildBeatportReviewReport() {
         updatedAt: "2026-03-31T14:06:00.000Z"
       },
       {
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3"],
         candidateId: "beatport-queue-2",
         createdAt: "2026-03-31T14:06:00.000Z",
@@ -124,7 +124,7 @@ function buildBeatportReviewReport() {
         latestAttempt: null,
         resolution: null,
         reviewQueueEntry: {
-          authorizationBasis: "purchase-entitlement",
+          sourceBasis: "purchase-entitlement",
           availableFormats: ["mp3", "wav"],
           candidateId: "beatport-queue-1",
           createdAt: "2026-03-31T14:05:00.000Z",
@@ -159,7 +159,7 @@ function buildBeatportReviewReport() {
         latestAttempt: null,
         resolution: null,
         reviewQueueEntry: {
-          authorizationBasis: "purchase-entitlement",
+          sourceBasis: "purchase-entitlement",
           availableFormats: ["mp3"],
           candidateId: "beatport-queue-2",
           createdAt: "2026-03-31T14:06:00.000Z",

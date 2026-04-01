@@ -205,7 +205,7 @@ function renderTrackSource(track: RunReportTrack) {
       <div className="report-table-stack">
         <p className="report-table-primary">{providerName}</p>
         <p className="report-table-secondary">
-          {formatAuthorizationBasis(track.resolution.provider.authorizationBasis)} •{" "}
+          {formatSourceBasis(track.resolution.provider.sourceBasis)} •{" "}
           {track.resolution.selectedFormat?.toUpperCase() ?? "format pending"}
         </p>
       </div>
@@ -359,14 +359,14 @@ function formatAttemptOutcome(
   }
 }
 
-function formatAuthorizationBasis(value: string) {
+function formatSourceBasis(value: string) {
   switch (value) {
     case "uploader-enabled-download":
-      return "Uploader-enabled download";
+      return "Direct download";
     case "rights-holder-storefront":
-      return "Rights-holder storefront";
+      return "Storefront";
     case "purchase-entitlement":
-      return "Purchase entitlement";
+      return "Owned download";
     default:
       return value;
   }

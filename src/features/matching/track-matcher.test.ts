@@ -88,7 +88,7 @@ describe("matchTrackCandidates", () => {
         }),
         buildCandidate({
           availableFormats: ["mp3"],
-          authorizationBasis: "purchase-entitlement",
+          sourceBasis: "purchase-entitlement",
           candidateId: "beatport-extended",
           mixLabel: "Extended Mix",
           priceTier: "paid",
@@ -206,7 +206,7 @@ describe("matchTrackCandidates", () => {
       ]
     },
     {
-      name: "treats non-matching candidates as no authorized source match",
+      name: "treats non-matching candidates as no supported source match",
       candidates: [
         buildCandidate({
           artistName: "Different Artist",
@@ -215,7 +215,7 @@ describe("matchTrackCandidates", () => {
           title: "Different Song"
         })
       ],
-      expectedMissReason: "no-authorized-source-match",
+      expectedMissReason: "no-supported-source-match",
       expectedRejections: [
         {
           candidateId: "soundcloud-wrong-track",
@@ -271,7 +271,7 @@ function buildCandidate(
 ): ProviderCandidate {
   return {
     artistName: "Anyma",
-    authorizationBasis: "uploader-enabled-download",
+    sourceBasis: "uploader-enabled-download",
     availableFormats: ["mp3"],
     candidateId: overrides.candidateId,
     durationSeconds: 392,

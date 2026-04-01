@@ -72,7 +72,7 @@ export function createBeatportProvider(
   return defineReviewQueueProvider({
     id: BEATPORT_PROVIDER_ID,
     displayName: BEATPORT_PROVIDER_NAME,
-    authorizationBasis: "purchase-entitlement",
+    sourceBasis: "purchase-entitlement",
     priorityRank: 90,
     supportedFormats: ["mp3", "wav", "aiff"],
     search: async ({ track }) =>
@@ -138,7 +138,7 @@ async function searchBeatport(input: {
         providerId: BEATPORT_PROVIDER_ID,
         providerName: BEATPORT_PROVIDER_NAME,
         reason: "no-search-results",
-        trackMissReason: "no-authorized-source-match"
+        trackMissReason: "no-supported-source-match"
       });
     });
   } catch (error) {
@@ -172,7 +172,7 @@ function buildBeatportCandidate(
 
   return {
     artistName,
-    authorizationBasis: "purchase-entitlement" as const,
+    sourceBasis: "purchase-entitlement" as const,
     availableFormats: ["mp3", "wav"] as const,
     candidateId: buildBeatportCandidateId(artistName, track.title),
     durationSeconds: track.durationSeconds,

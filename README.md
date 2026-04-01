@@ -1,15 +1,15 @@
 # music-downloader
 
-Local web app for authorized-source playlist acquisition, optimized for DJ and electronic workflows.
+Local web app for playlist acquisition, optimized for DJ and electronic workflows.
 
 ## Product Scope
 
 - Local-only operator workflow
-- Authorized-source acquisition only
-- No stream-ripping, bypass, or unauthorized-source behavior
+- Provider-based acquisition only
+- No stream-ripping, bypass, or unsupported acquisition behavior
 - Current state: live Spotify and SoundCloud playlist intake, automatic
-  authorized-source matching/acquisition, packaged run artifacts, and Beatport
-  paid-review queueing
+  provider matching/acquisition, packaged run artifacts, and Beatport paid-review
+  queueing
 
 ## Requirements
 
@@ -95,7 +95,7 @@ exercises:
 - resumability after a persisted in-flight run is re-opened
 
 No live Spotify or SoundCloud credentials are required for that verification
-path, and the fixtures stay within authorized-source-only scenarios. Use
+path, and the fixtures stay within the built-in provider scenarios. Use
 `npm run dev` with the env vars above when you want to test live playlist
 intake locally; live provider acquisition also requires the browser-session
 setup flow described above.

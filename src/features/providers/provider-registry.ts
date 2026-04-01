@@ -8,13 +8,13 @@ import type {
 export const PROVIDER_PRICE_TIERS = ["free", "free-or-owned", "paid"] as const;
 export type ProviderPriceTier = (typeof PROVIDER_PRICE_TIERS)[number];
 
-export const PROVIDER_AUTHORIZATION_BASES = [
+export const PROVIDER_SOURCE_BASES = [
   "uploader-enabled-download",
   "rights-holder-storefront",
   "purchase-entitlement"
 ] as const;
-export type ProviderAuthorizationBasis =
-  (typeof PROVIDER_AUTHORIZATION_BASES)[number];
+export type ProviderSourceBasis =
+  (typeof PROVIDER_SOURCE_BASES)[number];
 
 export const PROVIDER_IMPLEMENTATION_BUCKETS = [
   "free-auto",
@@ -52,7 +52,7 @@ export type ProviderRejectionReason = (typeof PROVIDER_REJECTION_REASONS)[number
 
 export const PROVIDER_MISS_REASONS = [
   "no-search-results",
-  "no-authorized-candidate",
+  "no-supported-candidate",
   "provider-not-configured"
 ] as const;
 export type ProviderMissReason = (typeof PROVIDER_MISS_REASONS)[number];
@@ -77,7 +77,7 @@ export interface ProviderProvenance {
 
 export interface ProviderCandidate {
   artistName: string;
-  authorizationBasis: ProviderAuthorizationBasis;
+  sourceBasis: ProviderSourceBasis;
   availableFormats: readonly ProviderArtifactFormat[];
   candidateId: string;
   durationSeconds: number | null;
@@ -184,7 +184,7 @@ interface BaseProviderDefinition<
   TPriceTier extends ProviderPriceTier,
   TBucket extends ProviderImplementationBucket
 > {
-  authorizationBasis: ProviderAuthorizationBasis;
+  sourceBasis: ProviderSourceBasis;
   displayName: string;
   id: string;
   implementationBucket: TBucket;

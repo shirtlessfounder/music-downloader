@@ -98,7 +98,7 @@ describe("generateRunArtifacts", () => {
       store.transitionRunStatus(run.id, "matching");
 
       const review = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
         candidateId: "beatport-rejected-1",
         mixLabel: "Original Mix",
@@ -174,7 +174,7 @@ describe("generateRunArtifacts", () => {
       store.transitionRunStatus(run.id, "matching");
 
       const review = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3"],
         candidateId: "beatport-purchased-1",
         mixLabel: null,
@@ -315,7 +315,7 @@ describe("generateRunArtifacts", () => {
           buildMissedArtifactSourceNote({
             miss: {
               detail: "Older miss note should not win the same-timestamp tie.",
-              reason: "no-authorized-source-match"
+              reason: "no-supported-source-match"
             }
           })
         ),
@@ -337,7 +337,7 @@ describe("generateRunArtifacts", () => {
               sizeBytes: acquiredFileBody.length
             },
             provider: {
-              authorizationBasis: "uploader-enabled-download",
+              sourceBasis: "uploader-enabled-download",
               candidateId: "sc-track-latest",
               discoveredVia: "search",
               priceTier: "free",
@@ -440,7 +440,7 @@ describe("generateRunArtifacts", () => {
               sizeBytes: acquiredFileBody.length
             },
             provider: {
-              authorizationBasis: "uploader-enabled-download",
+              sourceBasis: "uploader-enabled-download",
               candidateId: "sc-track-111",
               discoveredVia: "search",
               priceTier: "free",
@@ -466,8 +466,8 @@ describe("generateRunArtifacts", () => {
         note: JSON.stringify(
           buildMissedArtifactSourceNote({
             miss: {
-              detail: "No authorized source matched the requested track.",
-              reason: "no-authorized-source-match"
+              detail: "No supported source matched the requested track.",
+              reason: "no-supported-source-match"
             }
           })
         ),
@@ -556,7 +556,7 @@ describe("generateRunArtifacts", () => {
         )
       ).toBe(acquiredFileBody.toString("utf8"));
       expect(missesText).toBe(
-        "002 - Lane 8 - Little Voices :: no-authorized-source-match :: No authorized source matched the requested track.\n"
+        "002 - Lane 8 - Little Voices :: no-supported-source-match :: No supported source matched the requested track.\n"
       );
       expect(manifest).toMatchObject({
         run: {
@@ -585,8 +585,8 @@ describe("generateRunArtifacts", () => {
           {
             artist: "Lane 8",
             miss: {
-              detail: "No authorized source matched the requested track.",
-              reason: "no-authorized-source-match"
+              detail: "No supported source matched the requested track.",
+              reason: "no-supported-source-match"
             },
             outcome: "missed",
             sourcePosition: 2,

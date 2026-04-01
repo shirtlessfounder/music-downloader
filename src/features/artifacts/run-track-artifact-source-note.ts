@@ -1,6 +1,6 @@
 import type {
   ProviderArtifactFormat,
-  ProviderAuthorizationBasis,
+  ProviderSourceBasis,
   ProviderPriceTier,
   ProviderProvenance
 } from "@/features/providers/provider-registry";
@@ -19,7 +19,7 @@ export type ArtifactSourceNoteSchema =
 type ArtifactSourceProviderDiscovery = ProviderProvenance["discoveredVia"];
 
 export type RunTrackArtifactSourceProvider = {
-  authorizationBasis: ProviderAuthorizationBasis;
+  sourceBasis: ProviderSourceBasis;
   candidateId?: string | null;
   discoveredVia?: ArtifactSourceProviderDiscovery;
   priceTier: ProviderPriceTier;

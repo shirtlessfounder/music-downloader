@@ -4,7 +4,7 @@ test("renders the intake shell", async ({ page }) => {
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /authorized-source acquisition/i })
+    page.getByRole("heading", { name: /playlist acquisition/i })
   ).toBeVisible();
   await expect(page.getByLabel(/playlist url/i)).toBeVisible();
   await expect(

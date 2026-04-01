@@ -168,7 +168,7 @@ describe("createBeatportProvider", () => {
       const provider = createBeatportProvider({ browserSessionService });
       const candidate = {
         artistName: "Anyma",
-        authorizationBasis: "purchase-entitlement" as const,
+        sourceBasis: "purchase-entitlement" as const,
         availableFormats: ["mp3", "wav"] as const,
         candidateId: "beatport-anyma-consciousness",
         durationSeconds: 392,

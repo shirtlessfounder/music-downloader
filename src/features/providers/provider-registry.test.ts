@@ -15,7 +15,7 @@ describe("ProviderRegistry", () => {
       defineReviewQueueProvider({
         id: "beatport",
         displayName: "Beatport",
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         priorityRank: 90,
         supportedFormats: ["mp3", "wav", "aiff"],
         search: async () =>
@@ -24,7 +24,7 @@ describe("ProviderRegistry", () => {
             providerId: "beatport",
             providerName: "Beatport",
             reason: "no-search-results",
-            trackMissReason: "no-authorized-source-match"
+            trackMissReason: "no-supported-source-match"
           }),
         acquirePurchased: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -49,7 +49,7 @@ describe("ProviderRegistry", () => {
       defineAutomaticProvider({
         id: "bandcamp",
         displayName: "Bandcamp",
-        authorizationBasis: "rights-holder-storefront",
+        sourceBasis: "rights-holder-storefront",
         priceTier: "free-or-owned",
         priorityRank: 20,
         supportedFormats: ["mp3", "wav", "flac", "aiff", "alac"],
@@ -59,7 +59,7 @@ describe("ProviderRegistry", () => {
             providerId: "bandcamp",
             providerName: "Bandcamp",
             reason: "no-search-results",
-            trackMissReason: "no-authorized-source-match"
+            trackMissReason: "no-supported-source-match"
           }),
         acquire: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -76,7 +76,7 @@ describe("ProviderRegistry", () => {
       defineAutomaticProvider({
         id: "soundcloud-direct-downloads",
         displayName: "SoundCloud Direct Downloads",
-        authorizationBasis: "uploader-enabled-download",
+        sourceBasis: "uploader-enabled-download",
         priceTier: "free",
         priorityRank: 10,
         supportedFormats: ["original-upload-format"],
@@ -85,8 +85,8 @@ describe("ProviderRegistry", () => {
             detail: "No SoundCloud direct download is available for the requested track.",
             providerId: "soundcloud-direct-downloads",
             providerName: "SoundCloud Direct Downloads",
-            reason: "no-authorized-candidate",
-            trackMissReason: "no-authorized-source-match"
+            reason: "no-supported-candidate",
+            trackMissReason: "no-supported-source-match"
           }),
         acquire: async ({ candidate }) =>
           buildProviderRejectedResult({
@@ -118,7 +118,7 @@ describe("ProviderRegistry", () => {
     const provider = defineAutomaticProvider({
       id: "bandcamp",
       displayName: "Bandcamp",
-      authorizationBasis: "rights-holder-storefront",
+      sourceBasis: "rights-holder-storefront",
       priceTier: "free-or-owned",
       priorityRank: 20,
       supportedFormats: ["mp3", "wav"],
@@ -128,7 +128,7 @@ describe("ProviderRegistry", () => {
           providerId: "bandcamp",
           providerName: "Bandcamp",
           reason: "no-search-results",
-          trackMissReason: "no-authorized-source-match"
+          trackMissReason: "no-supported-source-match"
         }),
       acquire: async ({ candidate }) =>
         buildProviderRejectedResult({
@@ -153,7 +153,7 @@ describe("provider result helpers", () => {
   it("preserves structured rejection and miss context for later matching and reporting", () => {
     const candidate = {
       artistName: "Anyma",
-      authorizationBasis: "uploader-enabled-download" as const,
+      sourceBasis: "uploader-enabled-download" as const,
       availableFormats: ["mp3"] as const,
       candidateId: "soundcloud-track-42",
       durationSeconds: 392,
@@ -197,8 +197,8 @@ describe("provider result helpers", () => {
         detail: "No authorized download was exposed for the matched SoundCloud track.",
         providerId: "soundcloud-direct-downloads",
         providerName: "SoundCloud Direct Downloads",
-        reason: "no-authorized-candidate",
-        trackMissReason: "no-authorized-source-match"
+        reason: "no-supported-candidate",
+        trackMissReason: "no-supported-source-match"
       })
     ).toEqual({
       outcome: "miss",
@@ -207,8 +207,8 @@ describe("provider result helpers", () => {
           "No authorized download was exposed for the matched SoundCloud track.",
         providerId: "soundcloud-direct-downloads",
         providerName: "SoundCloud Direct Downloads",
-        reason: "no-authorized-candidate",
-        trackMissReason: "no-authorized-source-match"
+        reason: "no-supported-candidate",
+        trackMissReason: "no-supported-source-match"
       }
     });
   });

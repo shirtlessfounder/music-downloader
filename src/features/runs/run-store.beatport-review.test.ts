@@ -50,7 +50,7 @@ describe("createRunStore Beatport review queue", () => {
       store.transitionRunStatus(run.id, "matching");
 
       const firstReview = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
         candidateId: "beatport-1001",
         mixLabel: "Extended Mix",
@@ -63,7 +63,7 @@ describe("createRunStore Beatport review queue", () => {
         summary: "Queued after all automatic free-source providers missed."
       });
       const secondReview = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3"],
         candidateId: "beatport-1002",
         mixLabel: null,
@@ -143,7 +143,7 @@ describe("createRunStore Beatport review queue", () => {
       store.transitionRunStatus(run.id, "matching");
 
       const approvedReview = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
         candidateId: "beatport-2001",
         mixLabel: "Original Mix",
@@ -156,7 +156,7 @@ describe("createRunStore Beatport review queue", () => {
         summary: "Queued after all automatic free-source providers missed."
       });
       const rejectedReview = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3"],
         candidateId: "beatport-2002",
         mixLabel: null,
@@ -234,7 +234,7 @@ describe("createRunStore Beatport review queue", () => {
           }),
           outcome: "acquired",
           provider: expect.objectContaining({
-            authorizationBasis: "purchase-entitlement",
+            sourceBasis: "purchase-entitlement",
             priceTier: "paid",
             providerId: "beatport",
             providerName: "Beatport",

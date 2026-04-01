@@ -3,7 +3,7 @@ export type TrackAudioFormat = (typeof TRACK_AUDIO_FORMATS)[number];
 
 export const TRACK_MISS_REASONS = [
   "no-eligible-candidate",
-  "no-authorized-source-match"
+  "no-supported-source-match"
 ] as const;
 export type TrackMissReason = (typeof TRACK_MISS_REASONS)[number];
 
@@ -473,6 +473,6 @@ function coerceDurationNumber(value: number): number {
 }
 
 const MISS_REASON_DETAILS: Record<TrackMissReason, string> = {
-  "no-eligible-candidate": "No authorized candidate met the selection rules.",
-  "no-authorized-source-match": "No authorized source matched the requested track."
+  "no-eligible-candidate": "No supported candidate met the selection rules.",
+  "no-supported-source-match": "No supported source matched the requested track."
 };

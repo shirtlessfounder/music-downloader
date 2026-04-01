@@ -58,7 +58,7 @@
 - Modify: `README.md`
 
 - [ ] **Step 1: Update the README with setup, run, lint, unit test, and e2e test commands**
-- [ ] **Step 2: Note the authorized-source-only product scope in the README**
+- [ ] **Step 2: Note the provider-based product scope in the README**
 - [ ] **Step 3: Run `npm run lint`**
 - [ ] **Step 4: Run `npm run test`**
 - [ ] **Step 5: Run `npm run build`**

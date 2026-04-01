@@ -5,7 +5,7 @@ This module owns the shared provider boundary for acquisition sources.
 ## Rules
 
 - Put provider-specific selectors, browser flows, and storefront behavior in the provider implementation, not in the shared registry.
-- Copy `priorityRank`, authorization basis, and the free-vs-review split from `data/authorized-source-research-registry.json`.
+- Copy `priorityRank`, source basis, and the free-vs-review split from `data/provider-research-registry.json`.
 - Keep automatic providers in the `free-auto` bucket and keep Beatport-style paid work in `paid-review-queue`.
 
 ## Building A Provider
@@ -16,7 +16,7 @@ Use the helper that matches the provider mode:
 const bandcamp = defineAutomaticProvider({
   id: "bandcamp",
   displayName: "Bandcamp",
-  authorizationBasis: "rights-holder-storefront",
+  sourceBasis: "rights-holder-storefront",
   priceTier: "free-or-owned",
   priorityRank: 20,
   supportedFormats: ["mp3", "wav", "flac"],
@@ -31,7 +31,7 @@ const bandcamp = defineAutomaticProvider({
 const beatport = defineReviewQueueProvider({
   id: "beatport",
   displayName: "Beatport",
-  authorizationBasis: "purchase-entitlement",
+  sourceBasis: "purchase-entitlement",
   priorityRank: 90,
   supportedFormats: ["mp3", "wav", "aiff"],
   search: async ({ track }) => {
@@ -47,7 +47,7 @@ Automatic providers expose `acquire`. Review-only providers expose `queueForRevi
 
 ## Result Shapes
 
-- `ProviderCandidate` carries the shared matching data: provenance, authorization basis, price tier, available formats, duration, and mix confidence.
+- `ProviderCandidate` carries the shared matching data: provenance, source basis, price tier, available formats, duration, and mix confidence.
 - `ProviderAcquiredResult` adds artifact metadata for later manifest and packaging tasks.
 - `ProviderRejectedResult` preserves explicit rejection reasons and can optionally attach the canonical track rejection reason.
 - `ProviderMissResult` preserves provider-level miss context plus the run-level track miss reason.

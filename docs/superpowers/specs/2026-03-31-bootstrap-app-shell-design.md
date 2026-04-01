@@ -32,7 +32,7 @@ The UI baseline will be built from repo-local components and CSS variables rathe
 
 The landing page should feel like a dense local operator tool, not a marketing page. It will open with a compact masthead, a job-intake panel containing the playlist URL input and submit button, and a recent-runs panel that clearly states the queue and artifact generation flows are still placeholders at this stage.
 
-The page must remain honest about scope: no fake job submission, no simulated progress, and no unauthorized-source language.
+The page must remain honest about scope: no fake job submission, no simulated progress, and no unsupported-source language.
 
 ## Testing
 

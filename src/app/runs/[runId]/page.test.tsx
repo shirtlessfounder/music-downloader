@@ -90,7 +90,7 @@ describe("RunReportPage", () => {
               sizeBytes: 1024
             },
             provider: {
-              authorizationBasis: "uploader-enabled-download",
+              sourceBasis: "uploader-enabled-download",
               priceTier: "free",
               providerId: "soundcloud-direct-downloads",
               providerName: "SoundCloud Direct Downloads",
@@ -111,8 +111,8 @@ describe("RunReportPage", () => {
         note: JSON.stringify(
           buildMissedArtifactSourceNote({
             miss: {
-              detail: "No authorized source matched the requested track.",
-              reason: "no-authorized-source-match"
+              detail: "No supported source matched the requested track.",
+              reason: "no-supported-source-match"
             }
           })
         ),
@@ -155,7 +155,7 @@ describe("RunReportPage", () => {
       expect(
         screen.getByText(/original mix matched the approved fallback preference order/i)
       ).toBeVisible();
-      expect(screen.getByText(/no-authorized-source-match/i)).toBeVisible();
+      expect(screen.getByText(/no-supported-source-match/i)).toBeVisible();
       expect(
         screen.getByRole("link", { name: /downloads\.zip/i })
       ).toHaveAttribute("href", `/api/runs/${run.id}/artifacts/downloads-zip`);
@@ -194,7 +194,7 @@ describe("RunReportPage", () => {
       store.transitionRunStatus(run.id, "matching");
 
       const queuedReview = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
         candidateId: "beatport-queue-1",
         mixLabel: "Extended Mix",
@@ -207,7 +207,7 @@ describe("RunReportPage", () => {
         summary: "Queued after all automatic free-source providers missed."
       });
       const purchasedReview = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
+        sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3"],
         candidateId: "beatport-queue-2",
         mixLabel: null,

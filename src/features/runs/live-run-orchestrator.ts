@@ -238,13 +238,13 @@ async function resolveTrackWithAutomaticProviders(input: {
   input.runStore.updateRunTrackStatus(input.track.id, "missed");
   input.runStore.recordAcquisitionAttempt({
     note: JSON.stringify(
-      buildMissedArtifactSourceNote({
-        miss: {
-          detail:
-            "All automatic and paid-review authorized-source providers were exhausted without selecting an eligible acquisition candidate.",
-          providerId: "track-matcher",
-          providerName: "Track matcher",
-          reason: "no-authorized-source-match"
+          buildMissedArtifactSourceNote({
+            miss: {
+              detail:
+                "All automatic and paid-review providers were exhausted without selecting an eligible acquisition candidate.",
+              providerId: "track-matcher",
+              providerName: "Track matcher",
+          reason: "no-supported-source-match"
         }
       })
     ),
@@ -308,7 +308,7 @@ async function resolveTrackWithReviewProviders(input: {
 
     if (reviewQueueResult.outcome === "queued-for-review") {
       input.runStore.queueRunTrackReview({
-        authorizationBasis: reviewQueueResult.candidate.authorizationBasis,
+        sourceBasis: reviewQueueResult.candidate.sourceBasis,
         availableFormats: [...reviewQueueResult.candidate.availableFormats],
         candidateId: reviewQueueResult.candidate.candidateId,
         mixLabel: reviewQueueResult.candidate.mixLabel,
@@ -364,7 +364,7 @@ function persistAcquiredTrack(input: {
           ...input.acquisitionResult.artifact
         },
         provider: {
-          authorizationBasis: input.provider.authorizationBasis,
+          sourceBasis: input.provider.sourceBasis,
           candidateId: input.acquisitionResult.candidate.candidateId,
           discoveredVia:
             input.acquisitionResult.candidate.provenance.discoveredVia ?? "search",
