@@ -153,6 +153,51 @@ describe("OperatorBrowserSessionManager", () => {
       await rm(workspaceRoot, { force: true, recursive: true });
     }
   });
+
+  it("blocks operator setup when an automated provider session is already active", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "music-downloader-operator-session-conflict-")
+    );
+    const browserType = createStubBrowserType();
+    const browserSessionService = new BrowserSessionService({
+      workspaceRoot,
+      browserType: browserType.browserType
+    });
+    const manager = createOperatorBrowserSessionManager({
+      browserSessionService,
+      workspaceRoot
+    });
+
+    try {
+      const automatedSession = await browserSessionService.openSession({
+        sessionName: "soundcloud-direct-downloads"
+      });
+      await automatedSession.navigate({
+        url: "https://fixtures.example/provider-worker",
+        waitUntil: "load"
+      });
+
+      await expect(
+        manager.launchSetup("soundcloud-direct-downloads")
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("already active")
+      });
+      expect(browserType.launchPersistentContext).toHaveBeenCalledTimes(1);
+      expect(browserType.page.goto).toHaveBeenCalledTimes(1);
+      expect(browserType.page.goto).toHaveBeenCalledWith(
+        "https://fixtures.example/provider-worker",
+        expect.objectContaining({
+          waitUntil: "load"
+        })
+      );
+      expect(browserType.page.url()).toBe("https://fixtures.example/provider-worker");
+
+      await automatedSession.close();
+    } finally {
+      await browserSessionService.shutdown();
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
 });
 
 function createStubBrowserType() {

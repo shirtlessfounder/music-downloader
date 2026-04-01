@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import {
+  ActiveBrowserSessionConflictError,
   type BrowserSessionRecord,
   BrowserSessionService
 } from "@/features/browser/browser-session-service";
@@ -53,6 +54,7 @@ export interface OperatorBrowserSessionManagerDependencies {
   openSession(options: {
     authState?: BrowserSessionRecord["authState"];
     headless?: boolean;
+    reuseExisting?: boolean;
     sessionName: string;
   }): Promise<{
     close(): Promise<void>;
@@ -75,6 +77,25 @@ export class UnsupportedOperatorBrowserSessionProviderError extends Error {
     super(`Unsupported operator browser-session provider "${providerId}".`);
     this.name = "UnsupportedOperatorBrowserSessionProviderError";
     this.providerId = providerId;
+  }
+}
+
+export class OperatorBrowserSessionConflictError extends Error {
+  readonly code = "operator-browser-session-conflict";
+  readonly providerId: string;
+  readonly sessionName: string;
+
+  constructor(input: {
+    providerId: string;
+    providerName: string;
+    sessionName: string;
+  }) {
+    super(
+      `${input.providerName} setup can't open while an automated session is already active. Wait for the current acquisition to finish, then try again.`
+    );
+    this.name = "OperatorBrowserSessionConflictError";
+    this.providerId = input.providerId;
+    this.sessionName = input.sessionName;
   }
 }
 
@@ -186,10 +207,21 @@ class OperatorBrowserSessionManager {
 
   async launchSetup(providerId: string) {
     const provider = this.#getProvider(providerId);
-    const session = await this.#browserSessionService.openSession({
-      headless: false,
-      sessionName: provider.sessionName
-    });
+    let session;
+
+    try {
+      session = await this.#browserSessionService.openSession({
+        headless: false,
+        reuseExisting: false,
+        sessionName: provider.sessionName
+      });
+    } catch (error) {
+      if (error instanceof ActiveBrowserSessionConflictError) {
+        throw new OperatorBrowserSessionConflictError(provider);
+      }
+
+      throw error;
+    }
 
     await session.navigate({
       url: provider.setupUrl,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import {
   getSharedOperatorBrowserSessionManager,
+  OperatorBrowserSessionConflictError,
   UnsupportedOperatorBrowserSessionProviderError
 } from "@/features/browser/operator-browser-session-manager";
 
@@ -53,6 +54,13 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   } catch (error) {
+    if (error instanceof OperatorBrowserSessionConflictError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 409 }
+      );
+    }
+
     if (error instanceof UnsupportedOperatorBrowserSessionProviderError) {
       return NextResponse.json(
         { error: error.message },

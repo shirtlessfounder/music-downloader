@@ -115,6 +115,45 @@ describe("/api/operator/browser-sessions", () => {
     });
   });
 
+  it("returns a conflict response when operator setup would reuse an active automated session", async () => {
+    class OperatorBrowserSessionConflictError extends Error {}
+
+    const launchSetup = vi.fn().mockRejectedValue(
+      new OperatorBrowserSessionConflictError(
+        "Beatport setup can't open while an automated session is already active. Wait for the current acquisition to finish, then try again."
+      )
+    );
+
+    vi.doMock("@/features/browser/operator-browser-session-manager", () => ({
+      getSharedOperatorBrowserSessionManager: () => ({
+        launchSetup,
+        markAuthenticated: vi.fn()
+      }),
+      OperatorBrowserSessionConflictError,
+      UnsupportedOperatorBrowserSessionProviderError: class UnsupportedOperatorBrowserSessionProviderError extends Error {}
+    }));
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/operator/browser-sessions", {
+        body: JSON.stringify({
+          action: "launch",
+          providerId: "beatport"
+        }),
+        headers: {
+          "content-type": "application/json"
+        },
+        method: "POST"
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Beatport setup can't open while an automated session is already active. Wait for the current acquisition to finish, then try again."
+    });
+  });
+
   it("rejects unsupported setup actions", async () => {
     vi.doMock("@/features/browser/operator-browser-session-manager", () => ({
       getSharedOperatorBrowserSessionManager: () => ({
