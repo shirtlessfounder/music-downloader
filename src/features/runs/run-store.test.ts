@@ -255,7 +255,7 @@ describe("createRunStore", () => {
     }
   });
 
-  it("updates review queue while keeping purchased tracks out of packaging until import", () => {
+  it("updates review queue after a purchased review acquires the owned download", () => {
     const tempDatabase = createTempDatabasePath();
 
     try {
@@ -316,10 +316,18 @@ describe("createRunStore", () => {
         rejectedReview.id,
         "rejected"
       );
-      const purchasedResult = store.transitionRunTrackReviewStatus(
-        approvedReview.id,
-        "purchased"
-      );
+      const purchasedResult = store.completePurchasedRunTrackReview({
+        artifact: {
+          contentType: "audio/mpeg",
+          fileExtension: "mp3",
+          fileName: "track-one.mp3",
+          format: "mp3",
+          localFilePath: "/tmp/track-one.mp3",
+          sha256: "abc123",
+          sizeBytes: 1234
+        },
+        reviewId: approvedReview.id
+      });
       const persistedRun = store.getRun(run.id);
 
       expect(approvedResult.status).toBe("approved");
@@ -328,7 +336,7 @@ describe("createRunStore", () => {
       expect(persistedRun).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "awaiting-approval"
+          status: "packaging"
         })
       );
       expect(
@@ -343,9 +351,54 @@ describe("createRunStore", () => {
             [track.sourcePosition, track.status] satisfies [number, RunTrackStatus]
         )
       ).toEqual([
-        [1, "awaiting-approval"],
+        [1, "acquired"],
         [2, "missed"]
       ]);
+    } finally {
+      tempDatabase.cleanup();
+    }
+  });
+
+  it("requires completePurchasedRunTrackReview for purchased review transitions", () => {
+    const tempDatabase = createTempDatabasePath();
+
+    try {
+      const store = createRunStore({ databasePath: tempDatabase.databasePath });
+      const run = store.createRun({
+        playlistTitle: "Purchased Transition Guard",
+        playlistUrl: "https://soundcloud.com/sets/purchased-transition-guard",
+        sourceType: "soundcloud"
+      });
+      const [track] = store.replaceRunTracks(run.id, [
+        {
+          artist: "Artist One",
+          sourcePosition: 1,
+          title: "Track One"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+
+      const review = store.queueRunTrackReview({
+        authorizationBasis: "purchase-entitlement",
+        availableFormats: ["mp3"],
+        candidateId: "beatport-guard-1",
+        mixLabel: null,
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/track-one/guard-1",
+        queueName: "beatport-review",
+        runTrackId: track.id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+
+      expect(() =>
+        store.transitionRunTrackReviewStatus(review.id, "purchased")
+      ).toThrowError(
+        "Use completePurchasedRunTrackReview to persist a purchased owned-download acquisition."
+      );
     } finally {
       tempDatabase.cleanup();
     }

@@ -11,6 +11,7 @@ import {
 import {
   ProviderRegistry,
   buildProviderMissResult,
+  buildProviderRejectedResult,
   defineAutomaticProvider,
   defineReviewQueueProvider,
   type ProviderArtifactFormat,
@@ -26,6 +27,10 @@ import {
   type RunDetail,
   type RunStore
 } from "@/features/runs/run-store";
+import {
+  getSharedRunWorker,
+  resetSharedRunWorkerForTests
+} from "@/features/runs/run-worker";
 import type { CanonicalTrack } from "@/features/tracks/canonical-track";
 
 export const e2eFixtureScenarios = [
@@ -237,6 +242,14 @@ export function createE2eFixtureProviderRegistry(
         providerName: "Beatport"
       });
     },
+    acquirePurchased: async ({ candidate }) =>
+      buildProviderRejectedResult({
+        candidate,
+        detail: "Fixture Beatport provider does not expose purchased-download acquisition.",
+        providerId: "beatport",
+        providerName: "Beatport",
+        reason: "provider-error"
+      }),
     queueForReview: async ({ candidate }) => ({
       outcome: "queued-for-review" as const,
       candidate,
@@ -298,6 +311,7 @@ export function resetE2eFixtureState() {
   });
 
   resetRunStoreForTests();
+  resetSharedRunWorkerForTests();
   getRunStore();
 }
 
@@ -307,11 +321,13 @@ export function restartE2eRunStore() {
 
   ensureFixtureEnvironment(workspaceRoot);
   resetRunStoreForTests();
+  resetSharedRunWorkerForTests();
 
   const bootStore = createRunStore({ databasePath });
   const runCount = bootStore.listRuns().length;
 
   bootStore.close();
+  getSharedRunWorker();
 
   return { runCount };
 }

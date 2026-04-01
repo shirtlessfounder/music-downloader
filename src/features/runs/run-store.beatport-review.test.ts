@@ -116,7 +116,7 @@ describe("createRunStore Beatport review queue", () => {
     }
   });
 
-  it("keeps purchased reviews awaiting import and persists rejected reviews as misses", () => {
+  it("completes purchased reviews by recording the acquired owned download and persists rejected reviews as misses", () => {
     const tempDatabase = createTempDatabasePath();
 
     try {
@@ -177,12 +177,22 @@ describe("createRunStore Beatport review queue", () => {
         rejectedReview.id,
         "rejected"
       );
-      const purchasedResult = store.transitionRunTrackReviewStatus(
-        approvedReview.id,
-        "purchased"
-      );
+      const purchasedResult = store.completePurchasedRunTrackReview({
+        artifact: {
+          contentType: "audio/mpeg",
+          fileExtension: "mp3",
+          fileName: "track-one.mp3",
+          format: "mp3",
+          localFilePath: "/tmp/track-one.mp3",
+          sha256: "abc123",
+          sizeBytes: 1234
+        },
+        reviewId: approvedReview.id
+      });
       const persistedRun = store.getRun(run.id);
       const attempts = store.listRunTrackAttempts(run.id);
+      const matchedAttempt = attempts.find((attempt) => attempt.outcome === "matched");
+      const missedAttempt = attempts.find((attempt) => attempt.outcome === "missed");
 
       expect(approvedResult.status).toBe("approved");
       expect(rejectedResult.status).toBe("rejected");
@@ -190,7 +200,7 @@ describe("createRunStore Beatport review queue", () => {
       expect(persistedRun).toEqual(
         expect.objectContaining({
           id: run.id,
-          status: "awaiting-approval"
+          status: "packaging"
         })
       );
       expect(
@@ -199,14 +209,46 @@ describe("createRunStore Beatport review queue", () => {
         ["beatport-2001", "purchased"],
         ["beatport-2002", "rejected"]
       ]);
-      expect(attempts).toEqual([
+      expect(matchedAttempt).toEqual(
+        expect.objectContaining({
+          outcome: "matched",
+          providerKey: "beatport",
+          runTrackId: tracks[0].id
+        })
+      );
+      expect(missedAttempt).toEqual(
         expect.objectContaining({
           outcome: "missed",
           providerKey: "beatport",
           runTrackId: tracks[1].id
         })
-      ]);
-      expect(parseRunTrackArtifactSourceNote(attempts[0]?.note ?? null)).toEqual(
+      );
+      expect(parseRunTrackArtifactSourceNote(matchedAttempt?.note ?? null)).toEqual(
+        expect.objectContaining({
+          artifact: expect.objectContaining({
+            fileName: "track-one.mp3",
+            format: "mp3",
+            localFilePath: "/tmp/track-one.mp3",
+            sha256: "abc123",
+            sizeBytes: 1234
+          }),
+          outcome: "acquired",
+          provider: expect.objectContaining({
+            authorizationBasis: "purchase-entitlement",
+            priceTier: "paid",
+            providerId: "beatport",
+            providerName: "Beatport",
+            providerUrl: "https://www.beatport.com/track/track-one/2001"
+          }),
+          selection: expect.objectContaining({
+            details:
+              "Beatport paid review confirmed the owned download and captured it for packaging.",
+            reason: "accepted-original-mix",
+            selectedFormat: "mp3"
+          })
+        })
+      );
+      expect(parseRunTrackArtifactSourceNote(missedAttempt?.note ?? null)).toEqual(
         expect.objectContaining({
           miss: expect.objectContaining({
             detail: "Rejected during Beatport paid review.",
@@ -223,7 +265,7 @@ describe("createRunStore Beatport review queue", () => {
             [track.sourcePosition, track.status] satisfies [number, RunTrackStatus]
         )
       ).toEqual([
-        [1, "awaiting-approval"],
+        [1, "acquired"],
         [2, "missed"]
       ]);
     } finally {

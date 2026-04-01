@@ -101,7 +101,7 @@ test("covers a Beatport review-lane run via deterministic fixture mode through t
   await expect(page.getByText(/awaiting operator review/i).first()).toBeVisible();
 });
 
-test("shows persisted resume metadata after the run store is restarted", async ({
+test("resumes interrupted runs after the run store is restarted", async ({
   page,
   request
 }) => {
@@ -116,8 +116,11 @@ test("shows persisted resume metadata after the run store is restarted", async (
     .locator("article")
     .filter({ hasText: seedPayload.run.playlistTitle ?? seedPayload.run.playlistUrl });
 
-  await expect(runCard).toContainText(/queued/i);
   await expect(runCard).toContainText(/matching/i);
+  await expect(runCard).toContainText(/completed/i, {
+    timeout: 15_000
+  });
+  await expect(runCard).not.toContainText(/queued/i);
   await expect(
     runCard.getByRole("link", {
       name: new RegExp(

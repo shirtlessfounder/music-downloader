@@ -1,5 +1,5 @@
 import type { ProviderRegistry } from "@/features/providers/provider-registry";
-import type { RunStore } from "@/features/runs/run-store";
+import { getRunStore, type RunStore } from "@/features/runs/run-store";
 
 import { executeQueuedRun } from "@/features/runs/live-run-orchestrator";
 
@@ -24,6 +24,7 @@ type GlobalWithRunWorker = typeof globalThis & {
 export function createRunWorker(
   dependencies: CreateRunWorkerDependencies = {}
 ): RunWorker {
+  const runStore = dependencies.runStore ?? getRunStore();
   const pendingRunIds = new Set<string>();
   const activeRunIds = new Set<string>();
   const processQueuedRun = dependencies.processQueuedRun ?? executeQueuedRun;
@@ -51,7 +52,10 @@ export function createRunWorker(
             activeRunIds.add(runId);
 
             try {
-              await processQueuedRun(runId, dependencies);
+              await processQueuedRun(runId, {
+                ...dependencies,
+                runStore
+              });
             } catch {
               continue;
             } finally {
@@ -67,7 +71,7 @@ export function createRunWorker(
     return drainPromise;
   }
 
-  return {
+  const worker: RunWorker = {
     scheduleRun(runId: string) {
       if (!activeRunIds.has(runId)) {
         pendingRunIds.add(runId);
@@ -82,6 +86,12 @@ export function createRunWorker(
       }
     }
   };
+
+  for (const runId of runStore.listQueuedRunIds()) {
+    void worker.scheduleRun(runId);
+  }
+
+  return worker;
 }
 
 export function getSharedRunWorker() {

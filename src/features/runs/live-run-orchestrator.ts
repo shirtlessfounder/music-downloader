@@ -60,7 +60,7 @@ export async function executeQueuedRun(
   const runStore = dependencies.runStore ?? getRunStore();
   const queuedRun = requireRun(runStore, runId);
 
-  if (queuedRun.status !== "queued" || queuedRun.resumeAfterStatus) {
+  if (queuedRun.status !== "queued") {
     return queuedRun;
   }
 
@@ -69,12 +69,28 @@ export async function executeQueuedRun(
     createLiveProviderRegistry({ workspaceRoot: dependencies.workspaceRoot });
 
   try {
-    runStore.transitionRunStatus(runId, "ingesting");
-    runStore.transitionRunStatus(runId, "matching");
+    let activeRun = queuedRun.resumeAfterStatus
+      ? runStore.resumeRun(runId)
+      : runStore.transitionRunStatus(runId, "ingesting");
+
+    if (activeRun.status === "ingesting") {
+      activeRun = runStore.transitionRunStatus(runId, "matching");
+    }
+
+    if (activeRun.status === "packaging") {
+      return finalizeTerminalRun(runId, {
+        runStore,
+        workspaceRoot: dependencies.workspaceRoot
+      });
+    }
 
     const hydratedRun = requireRun(runStore, runId);
 
     for (const track of hydratedRun.tracks) {
+      if (isResolvedTrackStatus(track.status)) {
+        continue;
+      }
+
       await resolveTrackWithAutomaticProviders({
         providers: providerRegistry.listAutomatic(),
         reviewProviders: providerRegistry.listReviewQueue(),
@@ -385,6 +401,10 @@ function failRunIfPossible(runStore: RunStore, runId: string) {
   }
 
   runStore.transitionRunStatus(runId, "failed");
+}
+
+function isResolvedTrackStatus(status: RunTrack["status"]) {
+  return status === "acquired" || status === "awaiting-approval" || status === "missed";
 }
 
 function requireRun(runStore: RunStore, runId: string) {

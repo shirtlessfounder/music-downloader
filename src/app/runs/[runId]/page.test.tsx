@@ -8,6 +8,7 @@ import {
   buildAcquiredArtifactSourceNote,
   buildMissedArtifactSourceNote
 } from "@/features/artifacts/run-artifacts";
+import { resetSharedRunWorkerForTests } from "@/features/runs/run-worker";
 
 vi.mock("next/navigation", async () => {
   const actual = await vi.importActual<typeof import("next/navigation")>(
@@ -40,6 +41,14 @@ async function withTempDatabase(callback: (databasePath: string) => Promise<void
 }
 
 describe("RunReportPage", () => {
+  beforeEach(() => {
+    resetSharedRunWorkerForTests();
+  });
+
+  afterEach(() => {
+    resetSharedRunWorkerForTests();
+  });
+
   it("renders persisted run details, source selections, misses, and artifact links", async () => {
     await withTempDatabase(async () => {
       vi.resetModules();
@@ -213,7 +222,18 @@ describe("RunReportPage", () => {
 
       store.transitionRunTrackReviewStatus(queuedReview.id, "approved");
       store.transitionRunTrackReviewStatus(purchasedReview.id, "approved");
-      store.transitionRunTrackReviewStatus(purchasedReview.id, "purchased");
+      store.completePurchasedRunTrackReview({
+        artifact: {
+          contentType: "audio/mpeg",
+          fileExtension: "mp3",
+          fileName: "drugs-from-amsterdam.mp3",
+          format: "mp3",
+          localFilePath: "/tmp/drugs-from-amsterdam.mp3",
+          sha256: "abc123",
+          sizeBytes: 1234
+        },
+        reviewId: purchasedReview.id
+      });
 
       const pageModule = await import("./page");
 
@@ -232,7 +252,7 @@ describe("RunReportPage", () => {
         0
       );
       expect(
-        screen.getAllByText(/purchased, awaiting import before packaging/i).length
+        screen.getAllByText(/purchased download acquired for packaging/i).length
       ).toBeGreaterThan(0);
       expect(
         screen.getByRole("button", {
