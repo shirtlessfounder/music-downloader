@@ -26,6 +26,13 @@ Use this as the repo-local execution brief.
 11. Beatport paid queue and approval flow
 12. end-to-end hardening and verification
 
+## Authorized-Source Research Registry
+
+- Source of truth: `data/authorized-source-research-registry.json`
+- Usage guide: `docs/product/provider-research-registry.md`
+- Later provider tasks should only implement entries marked `in-scope-with-constraints` or `required-fallback`
+- Keep `free-auto` entries ahead of any paid flow, and keep Beatport as the last-resort paid fallback queue
+
 ## Delivery Rules
 
 - full approved scope is in play
