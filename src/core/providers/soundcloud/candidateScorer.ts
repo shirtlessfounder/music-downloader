@@ -70,6 +70,20 @@ function getMixPriority(track: CanonicalTrack, mixClass: MixPreference): number 
   return index === -1 ? Number.POSITIVE_INFINITY : index;
 }
 
+function isAcceptedCandidate(
+  entry: CandidateSelection | (Omit<CandidateSelection, 'mixClass'> & { mixClass: null })
+): entry is CandidateSelection {
+  if (entry.mixClass === 'extended' || entry.mixClass === 'original') {
+    return entry.confidence >= 90;
+  }
+
+  if (entry.mixClass === 'long-fallback') {
+    return entry.confidence >= 90;
+  }
+
+  return false;
+}
+
 export function pickBestCandidate(
   track: CanonicalTrack,
   candidates: readonly SoundCloudCandidate[]
@@ -86,17 +100,7 @@ export function pickBestCandidate(
         mixClass
       };
     })
-    .filter((entry) => {
-      if (entry.mixClass === 'extended' || entry.mixClass === 'original') {
-        return entry.confidence >= 90;
-      }
-
-      if (entry.mixClass === 'long-fallback') {
-        return entry.confidence >= 90;
-      }
-
-      return false;
-    })
+    .filter(isAcceptedCandidate)
     .sort((left, right) => {
       const priorityDelta =
         getMixPriority(track, left.mixClass) - getMixPriority(track, right.mixClass);

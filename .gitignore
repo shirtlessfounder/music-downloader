@@ -1,3 +1,4 @@
 .worktrees/
 .next/
 node_modules/
+test-results/
