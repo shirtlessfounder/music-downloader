@@ -4,12 +4,7 @@ import path from "node:path";
 
 import type { Page } from "playwright";
 
-import {
-  BrowserSessionService,
-  ExpiredBrowserSessionAuthStateError,
-  MissingBrowserSessionAuthStateError,
-  MissingBrowserSessionStateError
-} from "@/features/browser/browser-session-service";
+import { BrowserSessionService } from "@/features/browser/browser-session-service";
 import {
   canonicalizeTrack,
   type CanonicalTrack
@@ -23,6 +18,10 @@ import {
   type ProviderArtifactFormat,
   type ProviderCandidate
 } from "./provider-registry";
+import {
+  openAuthenticatedBackgroundProviderSession,
+  openBackgroundProviderSession
+} from "./provider-browser-session";
 
 export const BEATPORT_PROVIDER_ID = "beatport";
 export const BEATPORT_PROVIDER_NAME = "Beatport";
@@ -106,9 +105,15 @@ async function searchBeatport(input: {
   sessionName: string;
   track: CanonicalTrack;
 }) {
-  const session = await input.browserSessionService.openSession({
+  const session = await openBackgroundProviderSession({
+    browserSessionService: input.browserSessionService,
+    providerId: BEATPORT_PROVIDER_ID,
+    providerName: BEATPORT_PROVIDER_NAME,
     sessionName: input.sessionName
   });
+  if ("outcome" in session) {
+    return session;
+  }
   const searchQuery = buildBeatportSearchQuery(input.track);
 
   try {
@@ -425,38 +430,15 @@ async function openAuthenticatedSession(input: {
   candidate: ProviderCandidate;
   sessionName: string;
 }) {
-  try {
-    await input.browserSessionService.requireAuthenticatedSession(input.sessionName);
-  } catch (error) {
-    if (
-      error instanceof MissingBrowserSessionStateError ||
-      error instanceof MissingBrowserSessionAuthStateError
-    ) {
-      return buildProviderRejectedResult({
-        candidate: input.candidate,
-        detail:
-          "An authenticated Beatport browser session is required before owned downloads can be acquired.",
-        providerId: BEATPORT_PROVIDER_ID,
-        providerName: BEATPORT_PROVIDER_NAME,
-        reason: "auth-required"
-      });
-    }
-
-    if (error instanceof ExpiredBrowserSessionAuthStateError) {
-      return buildProviderRejectedResult({
-        candidate: input.candidate,
-        detail:
-          "The Beatport browser session expired and must be refreshed before owned downloads can be acquired.",
-        providerId: BEATPORT_PROVIDER_ID,
-        providerName: BEATPORT_PROVIDER_NAME,
-        reason: "provider-session-expired"
-      });
-    }
-
-    throw error;
-  }
-
-  return input.browserSessionService.openSession({
+  return openAuthenticatedBackgroundProviderSession({
+    authRequiredDetail:
+      "An authenticated Beatport browser session is required before owned downloads can be acquired.",
+    browserSessionService: input.browserSessionService,
+    candidate: input.candidate,
+    expiredDetail:
+      "The Beatport browser session expired and must be refreshed before owned downloads can be acquired.",
+    providerId: BEATPORT_PROVIDER_ID,
+    providerName: BEATPORT_PROVIDER_NAME,
     sessionName: input.sessionName
   });
 }

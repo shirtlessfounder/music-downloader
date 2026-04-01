@@ -556,6 +556,83 @@ describe("createBandcampProvider", () => {
       await rm(expiredWorkspaceRoot, { force: true, recursive: true });
     }
   });
+
+  it("rejects background search while an operator-owned Bandcamp session is already open", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "music-downloader-bandcamp-provider-operator-session-")
+    );
+    const fixtureServer = await startBandcampFixtureServer({
+      releases: [
+        {
+          artistName: "DJ Sealer",
+          downloadOptions: [
+            {
+              body: "mp3 fixture payload\n",
+              contentType: "audio/mpeg",
+              fileName: "warehouse-tool.mp3",
+              formatKey: "mp3-320",
+              label: "MP3 320"
+            }
+          ],
+          durationSeconds: 392,
+          entitlement: "owned",
+          path: "/album/warehouse-tool-extended-mix",
+          title: "Warehouse Tool (Extended Mix)",
+          trackId: "bandcamp-track-111"
+        }
+      ],
+      searchResults: ["/album/warehouse-tool-extended-mix"]
+    });
+    const browserSessionService = new BrowserSessionService({ workspaceRoot });
+    const provider = createBandcampProvider({
+      baseUrl: fixtureServer.origin,
+      browserSessionService
+    });
+
+    try {
+      await seedAuthenticatedSession(browserSessionService);
+      const operatorSession = await browserSessionService.openSession({
+        owner: "operator",
+        sessionName: BANDCAMP_SESSION_NAME
+      });
+      const setupUrl = `${fixtureServer.origin}/album/warehouse-tool-extended-mix`;
+
+      await operatorSession.navigate({
+        url: setupUrl,
+        waitUntil: "load"
+      });
+
+      await expect(
+        provider.search({
+          track: canonicalizeTrack({
+            artistName: "DJ Sealer",
+            source: "spotify",
+            title: "Warehouse Tool (Extended Mix)"
+          })
+        })
+      ).resolves.toEqual({
+        outcome: "rejected",
+        rejection: {
+          detail:
+            "An operator-owned browser session is already open for Bandcamp. Finish or close it before background provider work can run.",
+          providerId: BANDCAMP_PROVIDER_ID,
+          providerName: BANDCAMP_PROVIDER_NAME,
+          reason: "provider-session-active",
+          retryable: true,
+          trackDecisionReason: undefined
+        }
+      });
+      await expect(operatorSession.withPage(async (page) => page.url())).resolves.toBe(
+        setupUrl
+      );
+
+      await operatorSession.close();
+    } finally {
+      await browserSessionService.shutdown();
+      await fixtureServer.close();
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
 });
 
 type ReleaseEntitlement =

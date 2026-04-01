@@ -39,6 +39,7 @@ export type ProviderArtifactFormat = (typeof PROVIDER_ARTIFACT_FORMATS)[number];
 export const PROVIDER_REJECTION_REASONS = [
   "auth-required",
   "provider-session-expired",
+  "provider-session-active",
   "candidate-format-unavailable",
   "candidate-mix-rejected",
   "candidate-duration-too-short",
@@ -235,6 +236,7 @@ const IMPLEMENTATION_BUCKET_ORDER: Record<ProviderImplementationBucket, number> 
 const RETRYABLE_REJECTION_REASONS = new Set<ProviderRejectionReason>([
   "auth-required",
   "provider-session-expired",
+  "provider-session-active",
   "download-artifact-missing",
   "provider-error"
 ]);

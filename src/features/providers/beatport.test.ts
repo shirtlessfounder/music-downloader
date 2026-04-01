@@ -13,6 +13,8 @@ import path from "node:path";
 import { BrowserSessionService } from "@/features/browser/browser-session-service";
 
 import {
+  BEATPORT_PROVIDER_ID,
+  BEATPORT_PROVIDER_NAME,
   BEATPORT_SESSION_NAME,
   createBeatportProvider
 } from "./beatport";
@@ -203,6 +205,57 @@ describe("createBeatportProvider", () => {
       });
     } finally {
       await browserSessionService.shutdown();
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects background Beatport search while an operator-owned session is already open", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "music-downloader-beatport-provider-operator-session-")
+    );
+    const fixtureServer = await startFixtureServer();
+    const browserSessionService = new BrowserSessionService({ workspaceRoot });
+
+    try {
+      await seedAuthenticatedSession(browserSessionService);
+      const operatorSession = await browserSessionService.openSession({
+        owner: "operator",
+        sessionName: BEATPORT_SESSION_NAME
+      });
+      const setupUrl = `${fixtureServer.baseUrl}/track/consciousness/1001`;
+
+      await operatorSession.navigate({
+        url: setupUrl,
+        waitUntil: "load"
+      });
+
+      await expect(
+        createBeatportProvider({
+          baseUrl: fixtureServer.baseUrl,
+          browserSessionService
+        }).search({
+          track: buildCanonicalTrack()
+        })
+      ).resolves.toEqual({
+        outcome: "rejected",
+        rejection: {
+          detail:
+            "An operator-owned browser session is already open for Beatport. Finish or close it before background provider work can run.",
+          providerId: BEATPORT_PROVIDER_ID,
+          providerName: BEATPORT_PROVIDER_NAME,
+          reason: "provider-session-active",
+          retryable: true,
+          trackDecisionReason: undefined
+        }
+      });
+      await expect(operatorSession.withPage(async (page) => page.url())).resolves.toBe(
+        setupUrl
+      );
+
+      await operatorSession.close();
+    } finally {
+      await browserSessionService.shutdown();
+      await fixtureServer.close();
       await rm(workspaceRoot, { force: true, recursive: true });
     }
   });
