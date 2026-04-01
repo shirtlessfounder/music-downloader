@@ -133,6 +133,10 @@ a {
   gap: 1rem;
 }
 
+.prerequisites-panel {
+  grid-column: 1 / -1;
+}
+
 .panel {
   display: grid;
   gap: 1.15rem;
@@ -178,6 +182,12 @@ a {
 .empty-state {
   display: grid;
   gap: 0.95rem;
+}
+
+.prerequisites-copy,
+.session-card-title-block {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .field {
@@ -273,7 +283,9 @@ a {
 .field-hint,
 .empty-state p,
 .status-list dd,
-.run-card dd {
+.run-card dd,
+.session-card-detail,
+.session-card-link {
   color: var(--text-soft);
 }
 
@@ -364,9 +376,24 @@ a {
   gap: 0.8rem;
 }
 
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
 .run-card {
   display: grid;
   gap: 0.9rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(255, 243, 228, 0.1);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.session-card {
+  display: grid;
+  gap: 0.85rem;
   padding: 0.95rem 1rem;
   border: 1px solid rgba(255, 243, 228, 0.1);
   border-radius: var(--radius-lg);
@@ -380,16 +407,32 @@ a {
   justify-content: space-between;
 }
 
+.session-card-head,
+.session-card-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
 .run-card-source,
 .run-card-url {
   margin: 0;
 }
 
-.run-card-source {
+.run-card-source,
+.session-card-label {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.session-card-label,
+.session-card-meta,
+.session-card-detail,
+.session-card-link {
+  margin: 0;
 }
 
 .run-card-title {
@@ -399,9 +442,21 @@ a {
   font-weight: 600;
 }
 
+.session-card-name {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
 .run-card-url {
   margin-top: 0.35rem;
   color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.session-card-link {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
   overflow-wrap: anywhere;
 }
 
@@ -555,6 +610,7 @@ a {
 @media (max-width: 900px) {
   .hero,
   .dashboard-grid,
+  .session-grid,
   .report-grid,
   .status-list,
   .run-card-stats,
@@ -567,6 +623,8 @@ a {
   }
 
   .panel-header,
+  .session-card-head,
+  .session-card-actions,
   .run-card-head,
   .report-review-card-head,
   .report-review-meta {

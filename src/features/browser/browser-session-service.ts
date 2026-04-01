@@ -46,6 +46,8 @@ export interface BrowserSessionServiceOptions {
 }
 
 export interface OpenBrowserSessionOptions {
+  headless?: boolean;
+  reuseExisting?: boolean;
   sessionName: string;
   authState?: BrowserSessionAuthState;
 }
@@ -140,6 +142,17 @@ export class ExpiredBrowserSessionAuthStateError extends Error {
   }
 }
 
+export class ActiveBrowserSessionConflictError extends Error {
+  readonly code = "active-browser-session-conflict";
+  readonly sessionName: string;
+
+  constructor(sessionName: string) {
+    super(`Browser session "${sessionName}" is already active.`);
+    this.name = "ActiveBrowserSessionConflictError";
+    this.sessionName = sessionName;
+  }
+}
+
 /**
  * Manages named persistent Playwright profiles inside the local app workspace.
  */
@@ -160,6 +173,10 @@ export class BrowserSessionService {
     const activeSession = this.#activeSessions.get(options.sessionName);
 
     if (activeSession) {
+      if (options.reuseExisting === false) {
+        throw new ActiveBrowserSessionConflictError(options.sessionName);
+      }
+
       if (options.authState) {
         await activeSession.setAuthState(options.authState);
       }
@@ -174,7 +191,7 @@ export class BrowserSessionService {
 
     const context = await this.#browserType.launchPersistentContext(sessionPaths.userDataDir, {
       acceptDownloads: true,
-      headless: true
+      headless: options.headless ?? true
     });
 
     const now = new Date().toISOString();

@@ -22,10 +22,15 @@ Local web app for authorized-source playlist acquisition, optimized for DJ and e
 npm install
 ```
 
-## Live Credentials
+## Live Credentials And Browser Sessions
 
 The normal local operator runtime (`npm run dev`) uses live playlist intake and
-therefore expects authorized Spotify and SoundCloud API credentials.
+therefore expects authorized Spotify and SoundCloud API credentials plus
+persisted authenticated browser sessions for:
+
+- SoundCloud Direct Downloads
+- Bandcamp
+- Beatport
 
 To enable authorized Spotify playlist ingestion through the Spotify Web API
 client-credentials flow, set these Spotify env vars before starting the app:
@@ -49,6 +54,15 @@ set these env vars before starting the app:
 export SOUNDCLOUD_CLIENT_ID=your-soundcloud-client-id
 export SOUNDCLOUD_CLIENT_SECRET=your-soundcloud-client-secret
 ```
+
+After the app is running, open `http://127.0.0.1:3000` and use the `Live
+Prerequisites` panel to launch a headed setup session for each required
+provider browser profile. Complete the provider login manually in the opened
+Playwright window, then return to the shell and click `Mark ready` to persist
+the authenticated session metadata.
+
+Those browser profiles are stored inside the local workspace and can be
+refreshed later from the same panel if a provider session expires.
 
 ## Run
 
@@ -83,7 +97,8 @@ exercises:
 No live Spotify or SoundCloud credentials are required for that verification
 path, and the fixtures stay within authorized-source-only scenarios. Use
 `npm run dev` with the env vars above when you want to test live playlist
-intake locally.
+intake locally; live provider acquisition also requires the browser-session
+setup flow described above.
 
 ## Notes
 

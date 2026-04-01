@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { startTransition, useEffect, useEffectEvent, useState } from "react";
 
+import type { OperatorBrowserSessionReadiness } from "@/features/browser/operator-browser-session-manager";
 import { FileBadge } from "@/components/ui/file-badge";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -12,6 +13,7 @@ const artifacts = ["downloads.zip", "manifest.json", "misses.txt"];
 const terminalStatuses: RunStatus[] = ["completed", "failed"];
 
 type HomeScreenProps = {
+  initialBrowserSessions?: OperatorBrowserSessionReadiness[];
   initialRuns?: RunSummary[];
 };
 
@@ -33,6 +35,60 @@ function formatSourceLabel(sourceType: RunSummary["sourceType"]) {
 
 function formatTrackCount(trackCount: number) {
   return `${trackCount} ${trackCount === 1 ? "track" : "tracks"}`;
+}
+
+function getBrowserSessionTone(
+  status: OperatorBrowserSessionReadiness["status"]
+) {
+  if (status === "ready") {
+    return "success" as const;
+  }
+
+  if (status === "setup-in-progress") {
+    return "muted" as const;
+  }
+
+  return "warning" as const;
+}
+
+function formatBrowserSessionStatus(
+  status: OperatorBrowserSessionReadiness["status"]
+) {
+  if (status === "ready") {
+    return "Ready";
+  }
+
+  if (status === "setup-in-progress") {
+    return "Setup Open";
+  }
+
+  if (status === "expired") {
+    return "Expired";
+  }
+
+  return "Missing";
+}
+
+function getBrowserSessionAction(
+  session: OperatorBrowserSessionReadiness
+): "launch" | "mark-authenticated" {
+  return session.status === "setup-in-progress"
+    ? "mark-authenticated"
+    : "launch";
+}
+
+function formatBrowserSessionActionLabel(
+  session: OperatorBrowserSessionReadiness
+) {
+  if (session.status === "setup-in-progress") {
+    return "Mark ready";
+  }
+
+  if (session.status === "ready" || session.status === "expired") {
+    return "Refresh";
+  }
+
+  return "Launch";
 }
 
 function getApiUrl(pathname: string) {
@@ -65,11 +121,34 @@ function upsertRun(runs: RunSummary[], incomingRun: RunSummary) {
   );
 }
 
-export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
+function updateBrowserSession(
+  sessions: OperatorBrowserSessionReadiness[],
+  incomingSession: OperatorBrowserSessionReadiness
+) {
+  return sessions.map((session) =>
+    session.providerId === incomingSession.providerId ? incomingSession : session
+  );
+}
+
+export function HomeScreen({
+  initialBrowserSessions = [],
+  initialRuns = []
+}: HomeScreenProps) {
+  const [browserSessions, setBrowserSessions] = useState(initialBrowserSessions);
   const [playlistUrl, setPlaylistUrl] = useState("");
   const [recentRuns, setRecentRuns] = useState(initialRuns);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(
+    null
+  );
+  const [sessionActionProviderId, setSessionActionProviderId] = useState<
+    string | null
+  >(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const providerSessionsNeedingAttention = browserSessions.filter(
+    (session) => session.status !== "ready"
+  ).length;
 
   const pollRuns = useEffectEvent(async () => {
     const activeRuns = recentRuns.filter(
@@ -165,6 +244,52 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
     }
   }
 
+  async function handleBrowserSessionAction(
+    session: OperatorBrowserSessionReadiness
+  ) {
+    setSessionActionError(null);
+    setSessionActionProviderId(session.providerId);
+
+    try {
+      const response = await fetch(getApiUrl("/api/operator/browser-sessions"), {
+        body: JSON.stringify({
+          action: getBrowserSessionAction(session),
+          providerId: session.providerId
+        }),
+        headers: {
+          "content-type": "application/json"
+        },
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+
+        throw new Error(
+          payload.error ?? "Unable to update the browser-session setup state."
+        );
+      }
+
+      const payload = (await response.json()) as {
+        provider: OperatorBrowserSessionReadiness;
+      };
+
+      startTransition(() => {
+        setBrowserSessions((currentSessions) =>
+          updateBrowserSession(currentSessions, payload.provider)
+        );
+      });
+    } catch (error) {
+      setSessionActionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to update the browser-session setup state."
+      );
+    } finally {
+      setSessionActionProviderId(null);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="hero">
@@ -185,13 +310,91 @@ export function HomeScreen({ initialRuns = [] }: HomeScreenProps) {
           </StatusBadge>
           <p className="hero-note">
             Playwright fixture mode keeps end-to-end verification deterministic.
-            Live operator runs still need Spotify and SoundCloud credentials
-            configured before intake starts.
+            Live operator runs need Spotify and SoundCloud API credentials plus
+            refreshed provider browser sessions before queueing real
+            acquisition.
           </p>
         </div>
       </header>
 
       <div className="dashboard-grid">
+        <Panel
+          className="prerequisites-panel"
+          eyebrow="Live Setup"
+          title="Live Prerequisites"
+          footer={
+            <span className="panel-caption">
+              {providerSessionsNeedingAttention
+                ? `${providerSessionsNeedingAttention} provider ${providerSessionsNeedingAttention === 1 ? "session needs" : "sessions need"} attention`
+                : "All required provider sessions are ready"}
+            </span>
+          }
+        >
+          <div className="prerequisites-copy">
+            <p>
+              Live playlist queueing depends on Spotify and SoundCloud API
+              credentials plus persisted browser sessions for SoundCloud direct
+              downloads, Bandcamp, and Beatport refresh.
+            </p>
+            <p>
+              Launch setup to open a headed Playwright profile, finish the
+              provider login manually, then return here and mark the session
+              ready.
+            </p>
+          </div>
+
+          {sessionActionError ? (
+            <p className="form-status" role="alert">
+              {sessionActionError}
+            </p>
+          ) : null}
+
+          <div className="session-grid" aria-label="Live provider session readiness">
+            {browserSessions.map((session) => {
+              const actionLabel = formatBrowserSessionActionLabel(session);
+              const isPending = sessionActionProviderId === session.providerId;
+
+              return (
+                <article className="session-card" key={session.providerId}>
+                  <div className="session-card-head">
+                    <div className="session-card-title-block">
+                      <p className="session-card-label">Persistent session</p>
+                      <h3 className="session-card-name">{session.providerName}</h3>
+                      <p className="session-card-meta">{session.sessionName}</p>
+                    </div>
+                    <StatusBadge tone={getBrowserSessionTone(session.status)}>
+                      {formatBrowserSessionStatus(session.status)}
+                    </StatusBadge>
+                  </div>
+
+                  <p className="session-card-detail">{session.detail}</p>
+
+                  {session.subjectHint ? (
+                    <p className="session-card-meta">{session.subjectHint}</p>
+                  ) : null}
+
+                  <div className="session-card-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={isPending}
+                      aria-label={`${actionLabel} ${session.providerName} session setup`}
+                      onClick={() => void handleBrowserSessionAction(session)}
+                    >
+                      {isPending
+                        ? session.status === "setup-in-progress"
+                          ? "Saving..."
+                          : "Launching..."
+                        : `${actionLabel} setup`}
+                    </button>
+                    <p className="session-card-link">{session.setupUrl}</p>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </Panel>
+
         <Panel
           eyebrow="Intake"
           title="Playlist Intake"
