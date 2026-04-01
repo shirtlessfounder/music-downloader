@@ -31,23 +31,44 @@ type SubmitLiveRunDependencies = {
   workspaceRoot?: string;
 };
 
-export async function submitLiveRunFromPlaylistUrl(
+type QueueLiveRunDependencies = Pick<
+  SubmitLiveRunDependencies,
+  "createRunFromPlaylistUrl" | "runStore"
+>;
+
+type ExecuteQueuedRunDependencies = Pick<
+  SubmitLiveRunDependencies,
+  "providerRegistry" | "runStore" | "workspaceRoot"
+>;
+
+export async function queueLiveRunFromPlaylistUrl(
   playlistUrl: string,
-  dependencies: SubmitLiveRunDependencies = {}
+  dependencies: QueueLiveRunDependencies = {}
 ): Promise<RunDetail> {
   const runStore = dependencies.runStore ?? getRunStore();
+
+  return (dependencies.createRunFromPlaylistUrl ?? createRunFromPlaylistUrl)(
+    playlistUrl,
+    { runStore }
+  );
+}
+
+export async function executeQueuedRun(
+  runId: string,
+  dependencies: ExecuteQueuedRunDependencies = {}
+): Promise<RunDetail> {
+  const runStore = dependencies.runStore ?? getRunStore();
+  const queuedRun = requireRun(runStore, runId);
+
+  if (queuedRun.status !== "queued" || queuedRun.resumeAfterStatus) {
+    return queuedRun;
+  }
+
   const providerRegistry =
     dependencies.providerRegistry ??
     createLiveProviderRegistry({ workspaceRoot: dependencies.workspaceRoot });
-  let runId: string | null = null;
 
   try {
-    const createdRun = await (
-      dependencies.createRunFromPlaylistUrl ?? createRunFromPlaylistUrl
-    )(playlistUrl, { runStore });
-
-    runId = createdRun.id;
-
     runStore.transitionRunStatus(runId, "ingesting");
     runStore.transitionRunStatus(runId, "matching");
 
@@ -73,12 +94,18 @@ export async function submitLiveRunFromPlaylistUrl(
       workspaceRoot: dependencies.workspaceRoot
     });
   } catch (error) {
-    if (runId) {
-      failRunIfPossible(runStore, runId);
-    }
-
+    failRunIfPossible(runStore, runId);
     throw error;
   }
+}
+
+export async function submitLiveRunFromPlaylistUrl(
+  playlistUrl: string,
+  dependencies: SubmitLiveRunDependencies = {}
+): Promise<RunDetail> {
+  const createdRun = await queueLiveRunFromPlaylistUrl(playlistUrl, dependencies);
+
+  return executeQueuedRun(createdRun.id, dependencies);
 }
 
 async function resolveTrackWithAutomaticProviders(input: {

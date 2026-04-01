@@ -26,37 +26,45 @@ async function withTempDatabase(
 afterEach(() => {
   vi.doUnmock("@/features/e2e/e2e-fixtures");
   vi.doUnmock("@/features/runs/live-run-orchestrator");
+  vi.doUnmock("@/features/runs/run-worker");
   vi.resetModules();
 });
 
 describe("/api/runs", () => {
-  it("submits runs through the shared live orchestrator without route-level fixture bypasses", async () => {
+  it("persists queued runs and schedules shared background execution without awaiting it", async () => {
     await withTempDatabase(async (databasePath) => {
       vi.resetModules();
 
       const playlistUrl = "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9";
-      const createdRun = {
-        artifactCount: 3,
-        artifacts: [],
-        createdAt: "2026-03-31T21:00:00.000Z",
-        id: "run-live-pipeline",
-        playlistTitle: "Warehouse Starters",
-        playlistUrl,
-        resumeAfterStatus: null,
-        reviewQueue: [],
-        sourceType: "spotify",
-        status: "completed",
-        trackCount: 2,
-        tracks: [],
-        updatedAt: "2026-03-31T21:05:00.000Z"
-      };
-      const submitLiveRunFromPlaylistUrl = vi.fn().mockResolvedValue(createdRun);
+      const scheduleRun = vi.fn().mockImplementation(
+        () => new Promise<void>(() => undefined)
+      );
+      let createdRunId: string | null = null;
 
       vi.doMock("@/features/e2e/e2e-fixtures", () => {
         throw new Error("route should not import e2e fixture submission bypasses");
       });
-      vi.doMock("@/features/runs/live-run-orchestrator", () => ({
-        submitLiveRunFromPlaylistUrl
+      vi.doMock("@/features/runs/live-run-orchestrator", async () => {
+        const runStoreModule = await import("@/features/runs/run-store");
+
+        return {
+          queueLiveRunFromPlaylistUrl: vi.fn(async (requestedPlaylistUrl: string) => {
+            const createdRun = runStoreModule.getRunStore().createRun({
+              playlistTitle: "Warehouse Starters",
+              playlistUrl: requestedPlaylistUrl,
+              sourceType: "spotify"
+            });
+
+            createdRunId = createdRun.id;
+
+            return createdRun;
+          })
+        };
+      });
+      vi.doMock("@/features/runs/run-worker", () => ({
+        getSharedRunWorker: () => ({
+          scheduleRun
+        })
       }));
 
       const { POST } = await import("./route");
@@ -72,9 +80,28 @@ describe("/api/runs", () => {
       );
 
       expect(createResponse.status).toBe(201);
-      expect(existsSync(databasePath)).toBe(false);
-      expect(submitLiveRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
-      await expect(createResponse.json()).resolves.toEqual(createdRun);
+      expect(existsSync(databasePath)).toBe(true);
+      expect(createdRunId).not.toBeNull();
+      expect(scheduleRun).toHaveBeenCalledWith(createdRunId);
+
+      await expect(createResponse.json()).resolves.toEqual(
+        expect.objectContaining({
+          id: createdRunId,
+          playlistTitle: "Warehouse Starters",
+          playlistUrl,
+          sourceType: "spotify",
+          status: "queued"
+        })
+      );
+
+      const { getRunStore } = await import("@/features/runs/run-store");
+
+      expect(getRunStore().getRun(createdRunId ?? "")).toEqual(
+        expect.objectContaining({
+          id: createdRunId,
+          status: "queued"
+        })
+      );
     });
   });
 
@@ -230,30 +257,36 @@ describe("/api/runs", () => {
     });
   });
 
-  it("delegates non-fixture submissions to the shared live-run orchestrator", async () => {
+  it("delegates non-fixture submissions to queued intake and the shared worker", async () => {
     await withTempDatabase(async () => {
       vi.resetModules();
 
       const playlistUrl = "https://open.spotify.com/playlist/37i9dQZF1DWVRSukIED0e9";
       const createdRun = {
-        artifactCount: 3,
+        artifactCount: 0,
         artifacts: [],
         createdAt: "2026-03-31T21:00:00.000Z",
-        id: "run-live-pipeline",
+        id: "run-live-queue",
         playlistTitle: "Warehouse Starters",
         playlistUrl,
         resumeAfterStatus: null,
         reviewQueue: [],
         sourceType: "spotify",
-        status: "completed",
+        status: "queued",
         trackCount: 2,
         tracks: [],
-        updatedAt: "2026-03-31T21:05:00.000Z"
+        updatedAt: "2026-03-31T21:00:00.000Z"
       };
-      const submitLiveRunFromPlaylistUrl = vi.fn().mockResolvedValue(createdRun);
+      const queueLiveRunFromPlaylistUrl = vi.fn().mockResolvedValue(createdRun);
+      const scheduleRun = vi.fn().mockResolvedValue(undefined);
 
       vi.doMock("@/features/runs/live-run-orchestrator", () => ({
-        submitLiveRunFromPlaylistUrl
+        queueLiveRunFromPlaylistUrl
+      }));
+      vi.doMock("@/features/runs/run-worker", () => ({
+        getSharedRunWorker: () => ({
+          scheduleRun
+        })
       }));
 
       const { POST } = await import("./route");
@@ -269,7 +302,8 @@ describe("/api/runs", () => {
       );
 
       expect(response.status).toBe(201);
-      expect(submitLiveRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
+      expect(queueLiveRunFromPlaylistUrl).toHaveBeenCalledWith(playlistUrl);
+      expect(scheduleRun).toHaveBeenCalledWith(createdRun.id);
       await expect(response.json()).resolves.toEqual(createdRun);
     });
   });
