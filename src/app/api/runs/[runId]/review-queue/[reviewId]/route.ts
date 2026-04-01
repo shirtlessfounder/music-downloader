@@ -140,7 +140,6 @@ function buildReviewCandidate(review: RunTrackReview, track: RunTrack) {
     providerName: review.providerName,
     provenance: {
       discoveredVia: "search" as const,
-      providerTrackId: review.candidateId,
       providerUrl: review.providerUrl ?? undefined,
       searchQuery: [track.artist, track.title, review.mixLabel]
         .filter((value): value is string => Boolean(value))
