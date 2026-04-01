@@ -4,7 +4,39 @@ import { HomeScreen } from "./home-screen";
 
 describe("HomeScreen", () => {
   it("renders the intake shell and empty run state", () => {
-    render(<HomeScreen />);
+    render(
+      <HomeScreen
+        initialBrowserSessions={[
+          {
+            detail:
+              "Launch setup to create the persisted SoundCloud browser session used during live automatic acquisition.",
+            providerId: "soundcloud-direct-downloads",
+            providerName: "SoundCloud Direct Downloads",
+            sessionName: "soundcloud-direct-downloads",
+            setupUrl: "https://soundcloud.com",
+            status: "missing"
+          },
+          {
+            detail: "Authenticated session available for automatic downloads.",
+            providerId: "bandcamp",
+            providerName: "Bandcamp",
+            sessionName: "bandcamp",
+            setupUrl: "https://bandcamp.com/login",
+            status: "ready",
+            subjectHint: "crate-digger@example.com"
+          },
+          {
+            detail:
+              "The Beatport session expired. Refresh it before owned downloads can run.",
+            providerId: "beatport",
+            providerName: "Beatport",
+            sessionName: "beatport",
+            setupUrl: "https://www.beatport.com/login",
+            status: "expired"
+          }
+        ]}
+      />
+    );
 
     expect(
       screen.getByRole("heading", { name: /authorized-source acquisition/i })
@@ -23,9 +55,23 @@ describe("HomeScreen", () => {
     ).toBeVisible();
     expect(
       screen.getByText(
-        /playwright fixture mode keeps end-to-end verification deterministic\. live operator runs still need spotify and soundcloud credentials configured before intake starts/i
+        /playwright fixture mode keeps end-to-end verification deterministic\. live operator runs need spotify and soundcloud api credentials plus refreshed provider browser sessions before queueing real acquisition/i
       )
     ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: /live prerequisites/i })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: /launch soundcloud direct downloads session setup/i
+      })
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: /refresh beatport session setup/i
+      })
+    ).toBeVisible();
+    expect(screen.getByText(/crate-digger@example\.com/i)).toBeVisible();
   });
 
   it("links recent runs into the run report detail flow", () => {

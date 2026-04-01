@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import os from "node:os";
 import path from "node:path";
 
+import type { BrowserContext, BrowserType } from "playwright";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -160,6 +161,54 @@ describe("BrowserSessionService", () => {
     },
     15_000
   );
+
+  it("defaults browser sessions to headless and only uses headed mode when requested", async () => {
+    const workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), "music-downloader-browser-session-headless-")
+    );
+    const launchPersistentContext = vi
+      .fn<BrowserType["launchPersistentContext"]>()
+      .mockImplementation(async () => createStubBrowserContext());
+    const service = new BrowserSessionService({
+      workspaceRoot,
+      browserType: {
+        launchPersistentContext
+      } as unknown as BrowserType
+    });
+
+    try {
+      const backgroundSession = await service.openSession({
+        sessionName: "background-provider"
+      });
+      await backgroundSession.close();
+
+      const operatorSession = await service.openSession({
+        headless: false,
+        sessionName: "operator-setup"
+      });
+      await operatorSession.close();
+
+      expect(launchPersistentContext).toHaveBeenNthCalledWith(
+        1,
+        expect.any(String),
+        expect.objectContaining({
+          acceptDownloads: true,
+          headless: true
+        })
+      );
+      expect(launchPersistentContext).toHaveBeenNthCalledWith(
+        2,
+        expect.any(String),
+        expect.objectContaining({
+          acceptDownloads: true,
+          headless: false
+        })
+      );
+    } finally {
+      await service.shutdown();
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
 });
 
 async function startFixtureServer() {
@@ -241,4 +290,15 @@ async function closeFixtureServer(server: Server) {
       resolve();
     });
   });
+}
+
+function createStubBrowserContext() {
+  return {
+    close: async () => undefined,
+    newPage: async () => ({
+      goto: async () => null,
+      url: () => "about:blank"
+    }),
+    pages: () => []
+  } as unknown as BrowserContext;
 }
