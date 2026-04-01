@@ -29,6 +29,16 @@ describe("createBeatportProvider", () => {
         track: buildCanonicalTrack()
       });
 
+      if (searchResult.outcome !== "candidates") {
+        throw new Error("Expected Beatport search to return a candidate.");
+      }
+
+      expect(searchResult.candidates[0].provenance.providerUrl).toBe(
+        "https://www.beatport.com/search/tracks?q=Anyma%20Consciousness%20Extended%20Mix"
+      );
+      expect(searchResult.candidates[0].provenance).not.toHaveProperty(
+        "providerTrackId"
+      );
       expect(searchResult).toEqual({
         candidates: [
           expect.objectContaining({
@@ -40,17 +50,14 @@ describe("createBeatportProvider", () => {
             providerId: "beatport",
             providerName: "Beatport",
             provenance: expect.objectContaining({
-              providerUrl: expect.stringMatching(/\/track\//)
+              providerUrl:
+                "https://www.beatport.com/search/tracks?q=Anyma%20Consciousness%20Extended%20Mix"
             }),
             title: "Consciousness"
           })
         ],
         outcome: "candidates"
       });
-
-      if (searchResult.outcome !== "candidates") {
-        throw new Error("Expected Beatport search to return a candidate.");
-      }
 
       await expect(
         provider.queueForReview({
@@ -262,7 +269,7 @@ async function startFixtureServer() {
 }
 
 function handleFixtureRequest(request: IncomingMessage, response: ServerResponse) {
-  if (request.url === "/track/anyma-consciousness/anyma-consciousness") {
+  if (request.url === "/search/tracks?q=Anyma%20Consciousness%20Extended%20Mix") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html>
 <html lang="en">

@@ -99,13 +99,13 @@ function buildBeatportCandidate(track: CanonicalTrack, baseUrl: string) {
     )
     .join("-")
     .replace(/-+/g, "-");
-  const providerTrackId = `${BEATPORT_PROVIDER_ID}-${slug}`;
+  const candidateId = `${BEATPORT_PROVIDER_ID}-${slug}`;
 
   return {
     artistName,
     authorizationBasis: "purchase-entitlement" as const,
     availableFormats: ["mp3", "wav"] as const,
-    candidateId: providerTrackId,
+    candidateId,
     durationSeconds:
       track.durationSeconds ?? (track.mix.displayLabel ? 392 : 301),
     mixConfidence: track.mix.confidence,
@@ -115,8 +115,10 @@ function buildBeatportCandidate(track: CanonicalTrack, baseUrl: string) {
     providerName: BEATPORT_PROVIDER_NAME,
     provenance: {
       discoveredVia: "search" as const,
-      providerTrackId,
-      providerUrl: new URL(`/track/${slug}/${slug}`, baseUrl).toString(),
+      providerUrl: new URL(
+        `/search/tracks?q=${encodeURIComponent(searchQuery)}`,
+        baseUrl
+      ).toString(),
       searchQuery
     },
     title: track.title

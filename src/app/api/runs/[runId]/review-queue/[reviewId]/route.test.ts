@@ -10,6 +10,9 @@ import {
 import path from "node:path";
 import { tmpdir } from "node:os";
 
+import { BrowserSessionService } from "@/features/browser/browser-session-service";
+import { createBeatportProvider } from "@/features/providers/beatport";
+
 async function withTempWorkspace(
   callback: (workspaceRoot: string) => Promise<void> | void
 ) {
@@ -36,6 +39,23 @@ async function withTempWorkspace(
 describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
   it("acquires a purchased Beatport review and completes the run through existing artifacts", async () => {
     await withTempWorkspace(async (workspaceRoot) => {
+      const beatportProvider = createBeatportProvider({
+        baseUrl: "https://catalog.beatport.test",
+        browserSessionService: new BrowserSessionService({ workspaceRoot })
+      });
+      const reviewTarget =
+        "https://catalog.beatport.test/search/tracks?q=Artist%20One%20Track%20One%20Original%20Mix";
+      const searchResult = await beatportProvider.search({
+        track: buildCanonicalTrack({
+          artistName: "Artist One",
+          title: "Track One"
+        })
+      });
+
+      if (searchResult.outcome !== "candidates") {
+        throw new Error("Expected Beatport search to return a candidate.");
+      }
+
       vi.resetModules();
       vi.doMock("@/features/providers/live-provider-registry", () => ({
         createLiveProviderRegistry: () => ({
@@ -45,7 +65,35 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
             }
 
             return {
-              acquirePurchased: async ({ candidate }: { candidate: { candidateId: string } }) => {
+              acquirePurchased: async ({
+                candidate
+              }: {
+                candidate: {
+                  candidateId: string;
+                  provenance: {
+                    providerTrackId?: string;
+                    providerUrl?: string;
+                  };
+                };
+              }) => {
+                if (
+                  candidate.provenance.providerTrackId !== undefined ||
+                  candidate.provenance.providerUrl !== reviewTarget
+                ) {
+                  return {
+                    outcome: "rejected" as const,
+                    candidate,
+                    rejection: {
+                      detail:
+                        "Purchased acquisition must reuse the authoritative Beatport review target.",
+                      providerId: "beatport",
+                      providerName: "Beatport",
+                      reason: "download-artifact-missing" as const,
+                      retryable: true
+                    }
+                  };
+                }
+
                 const artifactDirectory = path.join(workspaceRoot, "downloads");
                 const artifactBody = Buffer.from(
                   `owned artifact for ${candidate.candidateId}\n`,
@@ -105,12 +153,12 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
       const reviewOne = store.queueRunTrackReview({
         authorizationBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
-        candidateId: "beatport-route-1",
-        mixLabel: "Original Mix",
+        candidateId: searchResult.candidates[0].candidateId,
+        mixLabel: searchResult.candidates[0].mixLabel,
         priceTier: "paid",
         providerKey: "beatport",
         providerName: "Beatport",
-        providerUrl: "https://www.beatport.com/track/track-one/route-1",
+        providerUrl: searchResult.candidates[0].provenance.providerUrl,
         queueName: "beatport-review",
         runTrackId: tracks[0].id,
         summary: "Queued after all automatic free-source providers missed."
@@ -208,7 +256,7 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
           .getRun(run.id)
           ?.reviewQueue.map((review) => [review.candidateId, review.status])
       ).toEqual([
-        ["beatport-route-1", "purchased"],
+        ["beatport-artist-one-track-one", "purchased"],
         ["beatport-route-2", "rejected"]
       ]);
       expect(
@@ -479,3 +527,37 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
     });
   });
 });
+
+function buildCanonicalTrack(input: { artistName: string; title: string }) {
+  return {
+    artistCredits: [
+      {
+        display: input.artistName,
+        normalized: input.artistName.toLowerCase().replace(/\s+/g, "-"),
+        role: "primary" as const
+      }
+    ],
+    availableFormats: [],
+    durationSeconds: 392,
+    mix: {
+      cleanTitle: input.title,
+      confidence: "high" as const,
+      displayLabel: "Original Mix",
+      kind: "original" as const,
+      normalizedLabel: "original mix",
+      selectionClass: "preferred" as const
+    },
+    normalizedArtistKey: input.artistName.toLowerCase().replace(/\s+/g, "-"),
+    normalizedTitle: input.title.toLowerCase().replace(/\s+/g, "-"),
+    preferredFormats: ["mp3", "wav"] as const,
+    primaryArtist: input.artistName,
+    provenance: {
+      rawArtists: [input.artistName],
+      rawDuration: null,
+      rawTitle: `${input.title} (Original Mix)`,
+      source: "playlist-run-track",
+      sourceTrackId: "track-1"
+    },
+    title: input.title
+  };
+}
