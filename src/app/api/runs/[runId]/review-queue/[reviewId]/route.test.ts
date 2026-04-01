@@ -7,6 +7,12 @@ import {
   rmSync,
   writeFileSync
 } from "node:fs";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse
+} from "node:http";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -39,272 +45,279 @@ async function withTempWorkspace(
 describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
   it("acquires a purchased Beatport review and completes the run through existing artifacts", async () => {
     await withTempWorkspace(async (workspaceRoot) => {
-      const beatportProvider = createBeatportProvider({
-        baseUrl: "https://catalog.beatport.test",
-        browserSessionService: new BrowserSessionService({ workspaceRoot })
-      });
-      const reviewTarget =
-        "https://catalog.beatport.test/search/tracks?q=Artist%20One%20Track%20One%20Original%20Mix";
-      const searchResult = await beatportProvider.search({
-        track: buildCanonicalTrack({
-          artistName: "Artist One",
-          title: "Track One"
-        })
-      });
+      const fixtureServer = await startBeatportFixtureServer();
+      const browserSessionService = new BrowserSessionService({ workspaceRoot });
 
-      if (searchResult.outcome !== "candidates") {
-        throw new Error("Expected Beatport search to return a candidate.");
-      }
+      try {
+        const beatportProvider = createBeatportProvider({
+          baseUrl: fixtureServer.baseUrl,
+          browserSessionService
+        });
+        const reviewTarget = `${fixtureServer.baseUrl}/track/track-one/route-1`;
+        const searchResult = await beatportProvider.search({
+          track: buildCanonicalTrack({
+            artistName: "Artist One",
+            title: "Track One"
+          })
+        });
 
-      vi.resetModules();
-      vi.doMock("@/features/providers/live-provider-registry", () => ({
-        createLiveProviderRegistry: () => ({
-          get(providerId: string) {
-            if (providerId !== "beatport") {
-              return null;
-            }
+        if (searchResult.outcome !== "candidates") {
+          throw new Error("Expected Beatport search to return a candidate.");
+        }
 
-            return {
-              acquirePurchased: async ({
-                candidate
-              }: {
-                candidate: {
-                  candidateId: string;
-                  provenance: {
-                    providerTrackId?: string;
-                    providerUrl?: string;
+        vi.resetModules();
+        vi.doMock("@/features/providers/live-provider-registry", () => ({
+          createLiveProviderRegistry: () => ({
+            get(providerId: string) {
+              if (providerId !== "beatport") {
+                return null;
+              }
+
+              return {
+                acquirePurchased: async ({
+                  candidate
+                }: {
+                  candidate: {
+                    candidateId: string;
+                    provenance: {
+                      providerTrackId?: string;
+                      providerUrl?: string;
+                    };
                   };
-                };
-              }) => {
-                if (
-                  candidate.provenance.providerTrackId !== undefined ||
-                  candidate.provenance.providerUrl !== reviewTarget
-                ) {
+                }) => {
+                  if (
+                    candidate.provenance.providerTrackId !== undefined ||
+                    candidate.provenance.providerUrl !== reviewTarget
+                  ) {
+                    return {
+                      outcome: "rejected" as const,
+                      candidate,
+                      rejection: {
+                        detail:
+                          "Purchased acquisition must reuse the authoritative Beatport review target.",
+                        providerId: "beatport",
+                        providerName: "Beatport",
+                        reason: "download-artifact-missing" as const,
+                        retryable: true
+                      }
+                    };
+                  }
+
+                  const artifactDirectory = path.join(workspaceRoot, "downloads");
+                  const artifactBody = Buffer.from(
+                    `owned artifact for ${candidate.candidateId}\n`,
+                    "utf8"
+                  );
+                  const artifactPath = path.join(artifactDirectory, "track-one.mp3");
+
+                  mkdirSync(artifactDirectory, { recursive: true });
+                  writeFileSync(artifactPath, artifactBody);
+
                   return {
-                    outcome: "rejected" as const,
-                    candidate,
-                    rejection: {
-                      detail:
-                        "Purchased acquisition must reuse the authoritative Beatport review target.",
-                      providerId: "beatport",
-                      providerName: "Beatport",
-                      reason: "download-artifact-missing" as const,
-                      retryable: true
-                    }
+                    outcome: "acquired" as const,
+                    artifact: {
+                      contentType: "audio/mpeg",
+                      fileExtension: "mp3",
+                      fileName: "track-one.mp3",
+                      format: "mp3" as const,
+                      localFilePath: artifactPath,
+                      sha256: "abc123",
+                      sizeBytes: artifactBody.byteLength
+                    },
+                    candidate
                   };
                 }
+              };
+            }
+          })
+        }));
 
-                const artifactDirectory = path.join(workspaceRoot, "downloads");
-                const artifactBody = Buffer.from(
-                  `owned artifact for ${candidate.candidateId}\n`,
-                  "utf8"
-                );
-                const artifactPath = path.join(artifactDirectory, "track-one.mp3");
-
-                mkdirSync(artifactDirectory, { recursive: true });
-                writeFileSync(artifactPath, artifactBody);
-
-                return {
-                  outcome: "acquired" as const,
-                  artifact: {
-                    contentType: "audio/mpeg",
-                    fileExtension: "mp3",
-                    fileName: "track-one.mp3",
-                    format: "mp3" as const,
-                    localFilePath: artifactPath,
-                    sha256: "abc123",
-                    sizeBytes: artifactBody.byteLength
-                  },
-                  candidate
-                };
-              }
-            };
+        const [{ POST }, runStoreModule, artifactsModule] = await Promise.all([
+          import("./route"),
+          import("@/features/runs/run-store"),
+          import("@/features/artifacts/run-artifacts")
+        ]);
+        const store = runStoreModule.getRunStore();
+        const run = store.createRun({
+          playlistTitle: "Beatport Route Flow",
+          playlistUrl: "https://soundcloud.com/sets/beatport-route-flow",
+          sourceType: "soundcloud"
+        });
+        const tracks = store.replaceRunTracks(run.id, [
+          {
+            artist: "Artist One",
+            sourcePosition: 1,
+            title: "Track One"
+          },
+          {
+            artist: "Artist Two",
+            sourcePosition: 2,
+            title: "Track Two"
           }
-        })
-      }));
+        ]);
 
-      const [{ POST }, runStoreModule, artifactsModule] = await Promise.all([
-        import("./route"),
-        import("@/features/runs/run-store"),
-        import("@/features/artifacts/run-artifacts")
-      ]);
-      const store = runStoreModule.getRunStore();
-      const run = store.createRun({
-        playlistTitle: "Beatport Route Flow",
-        playlistUrl: "https://soundcloud.com/sets/beatport-route-flow",
-        sourceType: "soundcloud"
-      });
-      const tracks = store.replaceRunTracks(run.id, [
-        {
-          artist: "Artist One",
-          sourcePosition: 1,
-          title: "Track One"
-        },
-        {
-          artist: "Artist Two",
-          sourcePosition: 2,
-          title: "Track Two"
-        }
-      ]);
+        store.transitionRunStatus(run.id, "ingesting");
+        store.transitionRunStatus(run.id, "matching");
 
-      store.transitionRunStatus(run.id, "ingesting");
-      store.transitionRunStatus(run.id, "matching");
+        const reviewOne = store.queueRunTrackReview({
+          authorizationBasis: "purchase-entitlement",
+          availableFormats: ["mp3", "wav"],
+          candidateId: searchResult.candidates[0].candidateId,
+          mixLabel: searchResult.candidates[0].mixLabel,
+          priceTier: "paid",
+          providerKey: "beatport",
+          providerName: "Beatport",
+          providerUrl: searchResult.candidates[0].provenance.providerUrl,
+          queueName: "beatport-review",
+          runTrackId: tracks[0].id,
+          summary: "Queued after all automatic free-source providers missed."
+        });
+        const reviewTwo = store.queueRunTrackReview({
+          authorizationBasis: "purchase-entitlement",
+          availableFormats: ["mp3"],
+          candidateId: "beatport-route-2",
+          mixLabel: null,
+          priceTier: "paid",
+          providerKey: "beatport",
+          providerName: "Beatport",
+          providerUrl: "https://www.beatport.com/track/track-two/route-2",
+          queueName: "beatport-review",
+          runTrackId: tracks[1].id,
+          summary: "Queued after all automatic free-source providers missed."
+        });
 
-      const reviewOne = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
-        availableFormats: ["mp3", "wav"],
-        candidateId: searchResult.candidates[0].candidateId,
-        mixLabel: searchResult.candidates[0].mixLabel,
-        priceTier: "paid",
-        providerKey: "beatport",
-        providerName: "Beatport",
-        providerUrl: searchResult.candidates[0].provenance.providerUrl,
-        queueName: "beatport-review",
-        runTrackId: tracks[0].id,
-        summary: "Queued after all automatic free-source providers missed."
-      });
-      const reviewTwo = store.queueRunTrackReview({
-        authorizationBasis: "purchase-entitlement",
-        availableFormats: ["mp3"],
-        candidateId: "beatport-route-2",
-        mixLabel: null,
-        priceTier: "paid",
-        providerKey: "beatport",
-        providerName: "Beatport",
-        providerUrl: "https://www.beatport.com/track/track-two/route-2",
-        queueName: "beatport-review",
-        runTrackId: tracks[1].id,
-        summary: "Queued after all automatic free-source providers missed."
-      });
+        const approveResponse = await POST(
+          new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewOne.id}`, {
+            body: JSON.stringify({ action: "approve" }),
+            headers: {
+              "content-type": "application/json"
+            },
+            method: "POST"
+          }),
+          {
+            params: Promise.resolve({
+              reviewId: reviewOne.id,
+              runId: run.id
+            })
+          }
+        );
+        const purchasedResponse = await POST(
+          new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewOne.id}`, {
+            body: JSON.stringify({ action: "purchased" }),
+            headers: {
+              "content-type": "application/json"
+            },
+            method: "POST"
+          }),
+          {
+            params: Promise.resolve({
+              reviewId: reviewOne.id,
+              runId: run.id
+            })
+          }
+        );
+        const rejectResponse = await POST(
+          new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewTwo.id}`, {
+            body: JSON.stringify({ action: "reject" }),
+            headers: {
+              "content-type": "application/json"
+            },
+            method: "POST"
+          }),
+          {
+            params: Promise.resolve({
+              reviewId: reviewTwo.id,
+              runId: run.id
+            })
+          }
+        );
 
-      const approveResponse = await POST(
-        new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewOne.id}`, {
-          body: JSON.stringify({ action: "approve" }),
-          headers: {
-            "content-type": "application/json"
-          },
-          method: "POST"
-        }),
-        {
-          params: Promise.resolve({
-            reviewId: reviewOne.id,
-            runId: run.id
+        expect(approveResponse.status).toBe(200);
+        await expect(approveResponse.json()).resolves.toEqual(
+          expect.objectContaining({
+            id: reviewOne.id,
+            status: "approved"
           })
-        }
-      );
-      const purchasedResponse = await POST(
-        new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewOne.id}`, {
-          body: JSON.stringify({ action: "purchased" }),
-          headers: {
-            "content-type": "application/json"
-          },
-          method: "POST"
-        }),
-        {
-          params: Promise.resolve({
-            reviewId: reviewOne.id,
-            runId: run.id
+        );
+        expect(purchasedResponse.status).toBe(200);
+        await expect(purchasedResponse.json()).resolves.toEqual(
+          expect.objectContaining({
+            id: reviewOne.id,
+            status: "purchased"
           })
-        }
-      );
-      const rejectResponse = await POST(
-        new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewTwo.id}`, {
-          body: JSON.stringify({ action: "reject" }),
-          headers: {
-            "content-type": "application/json"
-          },
-          method: "POST"
-        }),
-        {
-          params: Promise.resolve({
-            reviewId: reviewTwo.id,
-            runId: run.id
+        );
+        expect(rejectResponse.status).toBe(200);
+        await expect(rejectResponse.json()).resolves.toEqual(
+          expect.objectContaining({
+            id: reviewTwo.id,
+            status: "rejected"
           })
-        }
-      );
+        );
 
-      expect(approveResponse.status).toBe(200);
-      await expect(approveResponse.json()).resolves.toEqual(
-        expect.objectContaining({
-          id: reviewOne.id,
-          status: "approved"
-        })
-      );
-      expect(purchasedResponse.status).toBe(200);
-      await expect(purchasedResponse.json()).resolves.toEqual(
-        expect.objectContaining({
-          id: reviewOne.id,
-          status: "purchased"
-        })
-      );
-      expect(rejectResponse.status).toBe(200);
-      await expect(rejectResponse.json()).resolves.toEqual(
-        expect.objectContaining({
-          id: reviewTwo.id,
-          status: "rejected"
-        })
-      );
+        expect(store.getRun(run.id)).toEqual(
+          expect.objectContaining({
+            id: run.id,
+            status: "completed"
+          })
+        );
+        expect(
+          store
+            .getRun(run.id)
+            ?.reviewQueue.map((review) => [review.candidateId, review.status])
+        ).toEqual([
+          ["beatport-artist-one-track-one", "purchased"],
+          ["beatport-route-2", "rejected"]
+        ]);
+        expect(
+          store
+            .getRun(run.id)
+            ?.tracks.map((track) => [track.sourcePosition, track.status])
+        ).toEqual([
+          [1, "acquired"],
+          [2, "missed"]
+        ]);
+        expect([...((store.getRun(run.id)?.artifacts ?? []).map((artifact) => artifact.kind))].sort()).toEqual([
+          "downloads-zip",
+          "manifest-json",
+          "misses-txt"
+        ]);
+        expect(
+          artifactsModule
+            .listRunArtifactDownloads({
+              runId: run.id,
+              runStore: store
+            })
+            .map((artifact) => artifact.kind)
+        ).toEqual(["downloads-zip", "misses-txt", "manifest-json"]);
 
-      expect(store.getRun(run.id)).toEqual(
-        expect.objectContaining({
-          id: run.id,
-          status: "completed"
-        })
-      );
-      expect(
-        store
+        const manifestArtifact = store
           .getRun(run.id)
-          ?.reviewQueue.map((review) => [review.candidateId, review.status])
-      ).toEqual([
-        ["beatport-artist-one-track-one", "purchased"],
-        ["beatport-route-2", "rejected"]
-      ]);
-      expect(
-        store
-          .getRun(run.id)
-          ?.tracks.map((track) => [track.sourcePosition, track.status])
-      ).toEqual([
-        [1, "acquired"],
-        [2, "missed"]
-      ]);
-      expect([...((store.getRun(run.id)?.artifacts ?? []).map((artifact) => artifact.kind))].sort()).toEqual([
-        "downloads-zip",
-        "manifest-json",
-        "misses-txt"
-      ]);
-      expect(
-        artifactsModule
-          .listRunArtifactDownloads({
-            runId: run.id,
-            runStore: store
-          })
-          .map((artifact) => artifact.kind)
-      ).toEqual(["downloads-zip", "misses-txt", "manifest-json"]);
+          ?.artifacts.find((artifact) => artifact.kind === "manifest-json");
 
-      const manifestArtifact = store
-        .getRun(run.id)
-        ?.artifacts.find((artifact) => artifact.kind === "manifest-json");
+        expect(manifestArtifact).toBeDefined();
 
-      expect(manifestArtifact).toBeDefined();
-
-      const manifest = JSON.parse(
-        readFileSync(
-          path.join(workspaceRoot, manifestArtifact?.relativePath ?? ""),
-          "utf8"
-        )
-      ) as {
-        summary: {
-          acquiredCount: number;
-          missCount: number;
-          trackCount: number;
+        const manifest = JSON.parse(
+          readFileSync(
+            path.join(workspaceRoot, manifestArtifact?.relativePath ?? ""),
+            "utf8"
+          )
+        ) as {
+          summary: {
+            acquiredCount: number;
+            missCount: number;
+            trackCount: number;
+          };
         };
-      };
 
-      expect(manifest.summary).toEqual({
-        acquiredCount: 1,
-        missCount: 1,
-        trackCount: 2
-      });
+        expect(manifest.summary).toEqual({
+          acquiredCount: 1,
+          missCount: 1,
+          trackCount: 2
+        });
+      } finally {
+        await browserSessionService.shutdown();
+        await fixtureServer.close();
+      }
     });
   });
 
@@ -560,4 +573,71 @@ function buildCanonicalTrack(input: { artistName: string; title: string }) {
     },
     title: input.title
   };
+}
+
+async function startBeatportFixtureServer() {
+  const server = createServer(handleBeatportFixtureRequest);
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+
+  if (address === null || typeof address === "string") {
+    throw new Error("Beatport fixture server did not expose a TCP address.");
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: () => closeBeatportFixtureServer(server)
+  };
+}
+
+function handleBeatportFixtureRequest(
+  request: IncomingMessage,
+  response: ServerResponse
+) {
+  if (request.url === "/search/tracks?q=Artist%20One%20Track%20One%20Original%20Mix") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
+      <article data-testid="beatport-search-result">
+        <a href="/track/not-track-one/route-wrong">Not Track One (Original Mix)</a>
+        <p data-testid="beatport-search-result-artist">Artist Two</p>
+        <p data-testid="beatport-search-result-duration">4:58</p>
+      </article>
+      <article data-testid="beatport-search-result">
+        <a href="/track/track-one/route-1">Track One (Original Mix)</a>
+        <p data-testid="beatport-search-result-artist">Artist One</p>
+        <p data-testid="beatport-search-result-duration">5:41</p>
+      </article>
+    </main>
+  </body>
+</html>`);
+
+    return;
+  }
+
+  response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+  response.end("Not found");
+}
+
+async function closeBeatportFixtureServer(server: Server) {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
 }

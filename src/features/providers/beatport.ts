@@ -10,9 +10,13 @@ import {
   MissingBrowserSessionAuthStateError,
   MissingBrowserSessionStateError
 } from "@/features/browser/browser-session-service";
-import { type CanonicalTrack } from "@/features/tracks/canonical-track";
+import {
+  canonicalizeTrack,
+  type CanonicalTrack
+} from "@/features/tracks/canonical-track";
 
 import {
+  buildProviderMissResult,
   buildProviderRejectedResult,
   defineReviewQueueProvider,
   type ProviderAcquireInput,
@@ -28,6 +32,7 @@ export const BEATPORT_REVIEW_SUMMARY =
 export const BEATPORT_SESSION_NAME = BEATPORT_PROVIDER_ID;
 
 const DEFAULT_BEATPORT_BASE_URL = "https://www.beatport.com";
+const SEARCH_RESULT_LINK_SELECTOR = 'a[href*="/track/"]';
 const OWNED_DOWNLOAD_SELECTOR = [
   '[data-testid="beatport-owned-download"]',
   'a[data-format-key][href]',
@@ -52,6 +57,13 @@ type ParsedOwnedDownload = {
   label: string | null;
 };
 
+type ParsedBeatportSearchResult = {
+  artistName: string;
+  durationSeconds: number | null;
+  providerUrl: string;
+  title: string;
+};
+
 export function createBeatportProvider(
   dependencies: BeatportProviderDependencies
 ) {
@@ -64,10 +76,13 @@ export function createBeatportProvider(
     authorizationBasis: "purchase-entitlement",
     priorityRank: 90,
     supportedFormats: ["mp3", "wav", "aiff"],
-    search: async ({ track }) => ({
-      outcome: "candidates" as const,
-      candidates: [buildBeatportCandidate(track, baseUrl)]
-    }),
+    search: async ({ track }) =>
+      searchBeatport({
+        baseUrl,
+        browserSessionService: dependencies.browserSessionService,
+        sessionName,
+        track
+      }),
     acquirePurchased: async (input) =>
       acquirePurchasedBeatportDownload({
         browserSessionService: dependencies.browserSessionService,
@@ -85,12 +100,108 @@ export function createBeatportProvider(
   });
 }
 
-function buildBeatportCandidate(track: CanonicalTrack, baseUrl: string) {
+async function searchBeatport(input: {
+  baseUrl: string;
+  browserSessionService: BeatportProviderDependencies["browserSessionService"];
+  sessionName: string;
+  track: CanonicalTrack;
+}) {
+  const session = await input.browserSessionService.openSession({
+    sessionName: input.sessionName
+  });
+  const searchQuery = buildBeatportSearchQuery(input.track);
+
+  try {
+    return await session.withPage(async (page) => {
+      await page.goto(buildBeatportSearchUrl(input.baseUrl, searchQuery), {
+        waitUntil: "load"
+      });
+
+      const candidates = (await readBeatportSearchResults(page))
+        .filter((result) => isBeatportSearchResultMatch(input.track, result))
+        .map((result) => buildBeatportCandidate(result, searchQuery));
+
+      if (candidates.length > 0) {
+        return {
+          outcome: "candidates" as const,
+          candidates
+        };
+      }
+
+      return buildProviderMissResult({
+        detail: "Beatport search results did not contain an exact artist/title match for the requested track.",
+        providerId: BEATPORT_PROVIDER_ID,
+        providerName: BEATPORT_PROVIDER_NAME,
+        reason: "no-search-results",
+        trackMissReason: "no-authorized-source-match"
+      });
+    });
+  } catch (error) {
+    return buildProviderRejectedResult({
+      detail: buildProviderErrorDetail(
+        "Beatport search failed while locating a reviewed track target.",
+        error
+      ),
+      providerId: BEATPORT_PROVIDER_ID,
+      providerName: BEATPORT_PROVIDER_NAME,
+      reason: "provider-error"
+    });
+  } finally {
+    await session.close();
+  }
+}
+
+function buildBeatportCandidate(
+  searchResult: ParsedBeatportSearchResult,
+  searchQuery: string
+) {
+  const track = canonicalizeTrack({
+    artistName: searchResult.artistName,
+    availableFormats: ["mp3", "wav"],
+    duration: searchResult.durationSeconds,
+    source: BEATPORT_PROVIDER_ID,
+    sourceUrl: searchResult.providerUrl,
+    title: searchResult.title
+  });
+  const artistName = track.primaryArtist ?? searchResult.artistName;
+
+  return {
+    artistName,
+    authorizationBasis: "purchase-entitlement" as const,
+    availableFormats: ["mp3", "wav"] as const,
+    candidateId: buildBeatportCandidateId(artistName, track.title),
+    durationSeconds: track.durationSeconds,
+    mixConfidence: track.mix.confidence,
+    mixLabel: track.mix.displayLabel,
+    priceTier: "paid" as const,
+    providerId: BEATPORT_PROVIDER_ID,
+    providerName: BEATPORT_PROVIDER_NAME,
+    provenance: {
+      discoveredVia: "search" as const,
+      providerUrl: searchResult.providerUrl,
+      searchQuery
+    },
+    title: track.title
+  };
+}
+
+function buildBeatportSearchQuery(track: CanonicalTrack) {
   const artistName = track.primaryArtist ?? "Unknown Artist";
-  const searchQuery = [artistName, track.title, track.mix.displayLabel]
+
+  return [artistName, track.title, track.mix.displayLabel]
     .filter((value): value is string => Boolean(value))
     .join(" ");
-  const slug = [artistName, track.title]
+}
+
+function buildBeatportSearchUrl(baseUrl: string, searchQuery: string) {
+  return new URL(
+    `/search/tracks?q=${encodeURIComponent(searchQuery)}`,
+    baseUrl
+  ).toString();
+}
+
+function buildBeatportCandidateId(artistName: string, title: string) {
+  const slug = [artistName, title]
     .map((segment) =>
       segment
         .toLowerCase()
@@ -99,30 +210,112 @@ function buildBeatportCandidate(track: CanonicalTrack, baseUrl: string) {
     )
     .join("-")
     .replace(/-+/g, "-");
-  const candidateId = `${BEATPORT_PROVIDER_ID}-${slug}`;
 
-  return {
-    artistName,
-    authorizationBasis: "purchase-entitlement" as const,
-    availableFormats: ["mp3", "wav"] as const,
-    candidateId,
-    durationSeconds:
-      track.durationSeconds ?? (track.mix.displayLabel ? 392 : 301),
-    mixConfidence: track.mix.confidence,
-    mixLabel: track.mix.displayLabel,
-    priceTier: "paid" as const,
-    providerId: BEATPORT_PROVIDER_ID,
-    providerName: BEATPORT_PROVIDER_NAME,
-    provenance: {
-      discoveredVia: "search" as const,
-      providerUrl: new URL(
-        `/search/tracks?q=${encodeURIComponent(searchQuery)}`,
-        baseUrl
-      ).toString(),
-      searchQuery
-    },
-    title: track.title
-  };
+  return `${BEATPORT_PROVIDER_ID}-${slug}`;
+}
+
+async function readBeatportSearchResults(
+  page: Page
+): Promise<ParsedBeatportSearchResult[]> {
+  return page.evaluate((linkSelector) => {
+    const cardElements = [
+      ...document.querySelectorAll('[data-testid="beatport-search-result"]')
+    ];
+    const sourceElements =
+      cardElements.length > 0
+        ? cardElements
+        : [...document.querySelectorAll(linkSelector)];
+    const results: ParsedBeatportSearchResult[] = [];
+
+    for (const sourceElement of sourceElements) {
+      const container =
+        sourceElement instanceof HTMLAnchorElement
+          ? sourceElement.parentElement ?? sourceElement
+          : sourceElement;
+      const link =
+        sourceElement instanceof HTMLAnchorElement
+          ? sourceElement
+          : container.querySelector(linkSelector);
+
+      if (!(link instanceof HTMLAnchorElement)) {
+        continue;
+      }
+
+      const title =
+        readText(container, '[data-testid="beatport-search-result-title"]') ??
+        link.textContent?.trim() ??
+        null;
+      const artistName =
+        readText(container, '[data-testid="beatport-search-result-artist"]') ??
+        container.getAttribute("data-artist-name");
+
+      if (!title || !artistName) {
+        continue;
+      }
+
+      results.push({
+        artistName,
+        durationSeconds: parseDurationSeconds(
+          readText(container, '[data-testid="beatport-search-result-duration"]') ??
+            container.getAttribute("data-duration")
+        ),
+        providerUrl: new URL(link.getAttribute("href") ?? "", window.location.href).toString(),
+        title
+      });
+    }
+
+    return results;
+
+    function readText(element: Element, selector: string) {
+      return element.querySelector(selector)?.textContent?.trim() ?? null;
+    }
+
+    function parseDurationSeconds(value: string | null) {
+      if (!value) {
+        return null;
+      }
+
+      const parts = value
+        .trim()
+        .split(":")
+        .map((segment) => Number(segment));
+
+      if (parts.length === 0 || parts.some((segment) => Number.isNaN(segment))) {
+        return null;
+      }
+
+      return parts.reduce((total, segment) => total * 60 + segment, 0);
+    }
+  }, SEARCH_RESULT_LINK_SELECTOR);
+}
+
+function isBeatportSearchResultMatch(
+  track: CanonicalTrack,
+  searchResult: ParsedBeatportSearchResult
+) {
+  const candidateTrack = canonicalizeTrack({
+    artistName: searchResult.artistName,
+    duration: searchResult.durationSeconds,
+    source: BEATPORT_PROVIDER_ID,
+    sourceUrl: searchResult.providerUrl,
+    title: searchResult.title
+  });
+  const requestedArtist = track.primaryArtist ?? track.artistCredits[0]?.display ?? "";
+
+  return (
+    normalizeBeatportSearchText(candidateTrack.title) ===
+      normalizeBeatportSearchText(track.title) &&
+    normalizeBeatportSearchText(candidateTrack.primaryArtist ?? searchResult.artistName) ===
+      normalizeBeatportSearchText(requestedArtist)
+  );
+}
+
+function normalizeBeatportSearchText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 async function acquirePurchasedBeatportDownload(input: {

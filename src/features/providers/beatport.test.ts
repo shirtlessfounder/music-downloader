@@ -17,14 +17,18 @@ import {
 import { createLiveProviderRegistry } from "./live-provider-registry";
 
 describe("createBeatportProvider", () => {
-  it("builds review queue candidates and queue metadata for paid fallback review", async () => {
+  it("builds review queue candidates with an exact Beatport track target for paid fallback review", async () => {
     const workspaceRoot = await mkdtemp(
       path.join(os.tmpdir(), "music-downloader-beatport-provider-search-")
     );
+    const fixtureServer = await startFixtureServer();
     const browserSessionService = new BrowserSessionService({ workspaceRoot });
-    const provider = createBeatportProvider({ browserSessionService });
 
     try {
+      const provider = createBeatportProvider({
+        baseUrl: fixtureServer.baseUrl,
+        browserSessionService
+      });
       const searchResult = await provider.search({
         track: buildCanonicalTrack()
       });
@@ -34,7 +38,7 @@ describe("createBeatportProvider", () => {
       }
 
       expect(searchResult.candidates[0].provenance.providerUrl).toBe(
-        "https://www.beatport.com/search/tracks?q=Anyma%20Consciousness%20Extended%20Mix"
+        `${fixtureServer.baseUrl}/track/consciousness/1001`
       );
       expect(searchResult.candidates[0].provenance).not.toHaveProperty(
         "providerTrackId"
@@ -50,8 +54,7 @@ describe("createBeatportProvider", () => {
             providerId: "beatport",
             providerName: "Beatport",
             provenance: expect.objectContaining({
-              providerUrl:
-                "https://www.beatport.com/search/tracks?q=Anyma%20Consciousness%20Extended%20Mix"
+              providerUrl: `${fixtureServer.baseUrl}/track/consciousness/1001`
             }),
             title: "Consciousness"
           })
@@ -76,11 +79,12 @@ describe("createBeatportProvider", () => {
       });
     } finally {
       await browserSessionService.shutdown();
+      await fixtureServer.close();
       await rm(workspaceRoot, { force: true, recursive: true });
     }
   });
 
-  it("acquires an owned Beatport download and prefers MP3 over WAV", async () => {
+  it("acquires an owned Beatport download from the exact reviewed track page and prefers MP3 over WAV", async () => {
     const workspaceRoot = await mkdtemp(
       path.join(os.tmpdir(), "music-downloader-beatport-provider-owned-")
     );
@@ -101,6 +105,10 @@ describe("createBeatportProvider", () => {
       if (searchResult.outcome !== "candidates") {
         throw new Error("Expected Beatport search to return a candidate.");
       }
+
+      expect(searchResult.candidates[0].provenance.providerUrl).toBe(
+        `${fixtureServer.baseUrl}/track/consciousness/1001`
+      );
 
       const acquisitionResult = await provider.acquirePurchased({
         candidate: searchResult.candidates[0],
@@ -128,7 +136,7 @@ describe("createBeatportProvider", () => {
       }
 
       expect(await readFile(acquisitionResult.artifact.localFilePath, "utf8")).toBe(
-        "beatport owned mp3\n"
+        "beatport exact owned mp3\n"
       );
       await access(acquisitionResult.artifact.localFilePath);
     } finally {
@@ -275,6 +283,38 @@ function handleFixtureRequest(request: IncomingMessage, response: ServerResponse
 <html lang="en">
   <body>
     <main>
+      <article data-testid="beatport-search-result">
+        <a href="/track/another-track/999">Another Track (Original Mix)</a>
+        <p data-testid="beatport-search-result-artist">Another Artist</p>
+        <p data-testid="beatport-search-result-duration">5:01</p>
+        <a
+          data-testid="beatport-owned-download"
+          data-format-key="mp3"
+          href="/downloads/search-page-wrong.mp3"
+          download="search-page-wrong.mp3"
+          type="audio/mpeg"
+        >
+          Download MP3
+        </a>
+      </article>
+      <article data-testid="beatport-search-result">
+        <a href="/track/consciousness/1001">Consciousness (Extended Mix)</a>
+        <p data-testid="beatport-search-result-artist">Anyma</p>
+        <p data-testid="beatport-search-result-duration">6:32</p>
+      </article>
+    </main>
+  </body>
+</html>`);
+
+    return;
+  }
+
+  if (request.url === "/track/consciousness/1001") {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
       <h1>Anyma - Consciousness</h1>
       <a
         data-testid="beatport-owned-download"
@@ -306,7 +346,7 @@ function handleFixtureRequest(request: IncomingMessage, response: ServerResponse
       "content-disposition": 'attachment; filename="consciousness.mp3"',
       "content-type": "audio/mpeg"
     });
-    response.end("beatport owned mp3\n");
+    response.end("beatport exact owned mp3\n");
 
     return;
   }
@@ -317,6 +357,16 @@ function handleFixtureRequest(request: IncomingMessage, response: ServerResponse
       "content-type": "audio/wav"
     });
     response.end("beatport owned wav\n");
+
+    return;
+  }
+
+  if (request.url === "/downloads/search-page-wrong.mp3") {
+    response.writeHead(200, {
+      "content-disposition": 'attachment; filename="search-page-wrong.mp3"',
+      "content-type": "audio/mpeg"
+    });
+    response.end("wrong search page mp3\n");
 
     return;
   }
