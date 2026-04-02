@@ -42,11 +42,19 @@ export const runTrackReviewStatuses = [
   "rejected",
   "purchased"
 ] as const;
+export const runTrackReviewCartStatuses = [
+  "added",
+  "already-in-cart",
+  "not-found",
+  "provider-error"
+] as const;
 
 export type PlaylistSource = "spotify" | "soundcloud";
 export type RunStatus = (typeof runStatuses)[number];
 export type RunTrackStatus = (typeof runTrackStatuses)[number];
 export type RunTrackReviewStatus = (typeof runTrackReviewStatuses)[number];
+export type RunTrackReviewCartStatus =
+  (typeof runTrackReviewCartStatuses)[number];
 export type ArtifactKind =
   | "downloads-zip"
   | "manifest-json"
@@ -106,6 +114,9 @@ type RunTrackReviewRow = {
   source_basis: ProviderSourceBasis;
   available_formats: string;
   candidate_id: string;
+  cart_detail: string | null;
+  cart_status: RunTrackReviewCartStatus | null;
+  cart_updated_at: string | null;
   created_at: string;
   id: string;
   mix_label: string | null;
@@ -167,6 +178,9 @@ export type RunTrackReview = {
   sourceBasis: ProviderSourceBasis;
   availableFormats: ProviderArtifactFormat[];
   candidateId: string;
+  cartDetail: string | null;
+  cartStatus: RunTrackReviewCartStatus | null;
+  cartUpdatedAt: string | null;
   createdAt: string;
   id: string;
   mixLabel: string | null;
@@ -294,6 +308,13 @@ const migrations = [
       process.cwd(),
       "src/features/runs/migrations/0003-run-track-review-source-basis.sql"
     )
+  },
+  {
+    name: "0004-run-track-review-cart-state",
+    path: path.join(
+      process.cwd(),
+      "src/features/runs/migrations/0004-run-track-review-cart-state.sql"
+    )
   }
 ] as const;
 
@@ -323,6 +344,14 @@ function assertValidRunTrackReviewStatus(
 ): asserts status is RunTrackReviewStatus {
   if (!runTrackReviewStatuses.includes(status as RunTrackReviewStatus)) {
     throw new Error(`Unsupported run track review status: ${status}`);
+  }
+}
+
+function assertValidRunTrackReviewCartStatus(
+  status: string
+): asserts status is RunTrackReviewCartStatus {
+  if (!runTrackReviewCartStatuses.includes(status as RunTrackReviewCartStatus)) {
+    throw new Error(`Unsupported run track review cart status: ${status}`);
   }
 }
 
@@ -369,6 +398,9 @@ function mapRunTrackReview(row: RunTrackReviewRow): RunTrackReview {
     sourceBasis: row.source_basis,
     availableFormats: JSON.parse(row.available_formats) as ProviderArtifactFormat[],
     candidateId: row.candidate_id,
+    cartDetail: row.cart_detail,
+    cartStatus: row.cart_status,
+    cartUpdatedAt: row.cart_updated_at,
     createdAt: row.created_at,
     id: row.id,
     mixLabel: row.mix_label,
@@ -481,9 +513,15 @@ export function createRunStore(options: RunStoreOptions = {}) {
   }
 
   function readRunTrackReview(reviewId: string) {
-    return database
+    const review = database
       .prepare("SELECT * FROM run_track_reviews WHERE id = ?")
       .get(reviewId) as RunTrackReviewRow | undefined;
+
+    if (review?.cart_status) {
+      assertValidRunTrackReviewCartStatus(review.cart_status);
+    }
+
+    return review;
   }
 
   function readRunAggregate(runId: string) {
@@ -1018,6 +1056,66 @@ export function createRunStore(options: RunStoreOptions = {}) {
       }
 
       return mapRunTrackReview(review);
+    },
+
+    updateRunTrackReviewCartResult(input: {
+      cartDetail: string;
+      cartStatus: RunTrackReviewCartStatus;
+      reviewId: string;
+    }) {
+      const review = readRunTrackReview(input.reviewId);
+
+      if (!review) {
+        throw new Error(`Run track review not found: ${input.reviewId}`);
+      }
+
+      const track = readRunTrack(review.run_track_id);
+
+      if (!track) {
+        throw new Error(`Run track not found: ${review.run_track_id}`);
+      }
+
+      const now = getTimestamp();
+
+      database.exec("BEGIN");
+
+      try {
+        database
+          .prepare(
+            `
+              UPDATE run_track_reviews
+              SET cart_status = ?,
+                  cart_detail = ?,
+                  cart_updated_at = ?,
+                  updated_at = ?
+              WHERE id = ?
+            `
+          )
+          .run(
+            input.cartStatus,
+            input.cartDetail,
+            now,
+            now,
+            input.reviewId
+          );
+        database
+          .prepare("UPDATE runs SET updated_at = ? WHERE id = ?")
+          .run(now, track.run_id);
+        database.exec("COMMIT");
+      } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+      }
+
+      const updatedReview = readRunTrackReview(input.reviewId);
+
+      if (!updatedReview) {
+        throw new Error(
+          `Run track review not found after cart-result update: ${input.reviewId}`
+        );
+      }
+
+      return mapRunTrackReview(updatedReview);
     },
 
     recordRunArtifact(input: RecordRunArtifactInput) {

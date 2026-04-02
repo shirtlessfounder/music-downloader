@@ -22,6 +22,106 @@ function createTempDatabasePath() {
 }
 
 describe("createRunStore Beatport review queue", () => {
+  it("persists per-review cart attempt results without changing review status", () => {
+    const tempDatabase = createTempDatabasePath();
+
+    try {
+      const store = createRunStore({ databasePath: tempDatabase.databasePath });
+      const run = store.createRun({
+        playlistTitle: "Beatport Cart Status",
+        playlistUrl: "https://open.spotify.com/playlist/6AA6AOvw9WM7qnVFrcp74i",
+        sourceType: "spotify"
+      });
+      const tracks = store.replaceRunTracks(run.id, [
+        {
+          artist: "Anyma",
+          sourcePosition: 1,
+          title: "Consciousness",
+          version: "Extended Mix"
+        },
+        {
+          artist: "Mau P",
+          sourcePosition: 2,
+          title: "Drugs From Amsterdam"
+        }
+      ]);
+
+      store.transitionRunStatus(run.id, "ingesting");
+      store.transitionRunStatus(run.id, "matching");
+
+      const firstReview = store.queueRunTrackReview({
+        sourceBasis: "purchase-entitlement",
+        availableFormats: ["mp3", "wav"],
+        candidateId: "beatport-1001",
+        mixLabel: "Extended Mix",
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/consciousness/1001",
+        queueName: "beatport-review",
+        runTrackId: tracks[0].id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+      const secondReview = store.queueRunTrackReview({
+        sourceBasis: "purchase-entitlement",
+        availableFormats: ["mp3"],
+        candidateId: "beatport-1002",
+        mixLabel: null,
+        priceTier: "paid",
+        providerKey: "beatport",
+        providerName: "Beatport",
+        providerUrl: "https://www.beatport.com/track/drugs-from-amsterdam/1002",
+        queueName: "beatport-review",
+        runTrackId: tracks[1].id,
+        summary: "Queued after all automatic free-source providers missed."
+      });
+
+      store.updateRunTrackReviewCartResult({
+        cartDetail: "Added to cart.",
+        cartStatus: "added",
+        reviewId: firstReview.id
+      });
+      store.updateRunTrackReviewCartResult({
+        cartDetail: "Track already existed in the Beatport cart.",
+        cartStatus: "already-in-cart",
+        reviewId: secondReview.id
+      });
+
+      const persistedRun = store.getRun(run.id);
+
+      expect(persistedRun?.reviewQueue).toEqual([
+        expect.objectContaining({
+          candidateId: "beatport-1001",
+          cartDetail: "Added to cart.",
+          cartStatus: "added",
+          status: "queued",
+          updatedAt: expect.any(String)
+        }),
+        expect.objectContaining({
+          candidateId: "beatport-1002",
+          cartDetail: "Track already existed in the Beatport cart.",
+          cartStatus: "already-in-cart",
+          status: "queued",
+          updatedAt: expect.any(String)
+        })
+      ]);
+      expect(
+        persistedRun?.reviewQueue.every((review) => review.cartUpdatedAt !== null)
+      ).toBe(true);
+      expect(
+        persistedRun?.tracks.map(
+          (track) =>
+            [track.sourcePosition, track.status] satisfies [number, RunTrackStatus]
+        )
+      ).toEqual([
+        [1, "awaiting-approval"],
+        [2, "awaiting-approval"]
+      ]);
+    } finally {
+      tempDatabase.cleanup();
+    }
+  });
+
   it("groups paid fallback candidates into one persisted per-run review queue", () => {
     const tempDatabase = createTempDatabasePath();
 
