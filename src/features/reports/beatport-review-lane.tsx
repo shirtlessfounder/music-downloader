@@ -18,11 +18,50 @@ export function BeatportReviewLane({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [isOpeningCart, setIsOpeningCart] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     action: ReviewAction;
     reviewId: string;
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const eligibleCartReviews = reviewQueue.filter(
+    (review) => review.status === "queued" || review.status === "approved"
+  );
+  const cartSummary = summarizeCartState(reviewQueue);
+
+  async function handleOpenCart() {
+    setError(null);
+    setIsOpeningCart(true);
+
+    try {
+      const response = await fetch(
+        `/api/runs/${encodeURIComponent(runId)}/review-queue/cart`,
+        {
+          method: "POST"
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+
+        throw new Error(payload?.error ?? "Unable to open the Beatport cart.");
+      }
+
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to open the Beatport cart."
+      );
+    } finally {
+      setIsOpeningCart(false);
+    }
+  }
 
   async function handleReviewAction(reviewId: string, action: ReviewAction) {
     setError(null);
@@ -64,6 +103,24 @@ export function BeatportReviewLane({
 
   return (
     <div className="report-review-list">
+      {eligibleCartReviews.length > 0 ? (
+        <div className="report-review-actions">
+          <button
+            className="primary-button"
+            type="button"
+            disabled={isOpeningCart || isPending}
+            onClick={() => void handleOpenCart()}
+          >
+            {isOpeningCart
+              ? "Opening Beatport Cart..."
+              : `Open Beatport Cart (${eligibleCartReviews.length})`}
+          </button>
+          {cartSummary ? (
+            <p className="report-table-secondary">{cartSummary}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       {reviewQueue.map((review) => {
         const actionIsPending = pendingAction?.reviewId === review.id;
 
@@ -103,22 +160,14 @@ export function BeatportReviewLane({
                 <p className="report-table-secondary">
                   Queue {review.queueName} • candidate {review.candidateId}
                 </p>
+                {review.cartDetail ? (
+                  <p className="report-table-secondary">{review.cartDetail}</p>
+                ) : null}
               </div>
             </div>
 
             {canMutateReview(review.status) ? (
               <div className="report-review-actions">
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={actionIsPending || isPending}
-                  aria-label={`Approve Beatport candidate for ${review.track.artist} - ${review.track.title}`}
-                  onClick={() => void handleReviewAction(review.id, "approve")}
-                >
-                  {isSpecificActionPending(pendingAction, review.id, "approve")
-                    ? "Approving..."
-                    : "Approve"}
-                </button>
                 <button
                   className="secondary-button"
                   type="button"
@@ -158,6 +207,38 @@ export function BeatportReviewLane({
 
 function canMutateReview(status: RunReportReviewQueueEntry["status"]) {
   return status === "queued" || status === "approved";
+}
+
+function summarizeCartState(reviewQueue: RunReportReviewQueueEntry[]) {
+  const counts = reviewQueue.reduce(
+    (summary, review) => {
+      if (review.cartStatus === "added") {
+        summary.added += 1;
+      } else if (review.cartStatus === "already-in-cart") {
+        summary.alreadyInCart += 1;
+      } else if (review.cartStatus === "not-found") {
+        summary.notFound += 1;
+      } else if (review.cartStatus === "provider-error") {
+        summary.failed += 1;
+      }
+
+      return summary;
+    },
+    {
+      added: 0,
+      alreadyInCart: 0,
+      failed: 0,
+      notFound: 0
+    }
+  );
+  const parts = [
+    counts.added > 0 ? `${counts.added} added to cart` : null,
+    counts.alreadyInCart > 0 ? `${counts.alreadyInCart} already in cart` : null,
+    counts.notFound > 0 ? `${counts.notFound} not found` : null,
+    counts.failed > 0 ? `${counts.failed} failed to add` : null
+  ].filter((value): value is string => value !== null);
+
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function formatAvailableFormats(formats: RunReportReviewQueueEntry["availableFormats"]) {

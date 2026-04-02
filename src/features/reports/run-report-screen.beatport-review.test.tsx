@@ -16,24 +16,18 @@ import { render, screen } from "@testing-library/react";
 import { RunReportScreen } from "./run-report-screen";
 
 describe("RunReportScreen Beatport review lane", () => {
-  it("renders persisted Beatport queue entries and operator actions", () => {
+  it("renders the run-level Beatport cart action and the remaining per-row review actions", () => {
     render(<RunReportScreen report={buildBeatportReviewReport() as never} />);
 
     expect(
       screen.getAllByText(/queued after all automatic free-source providers missed/i)
         .length
     ).toBeGreaterThan(0);
-    expect(screen.getAllByText(/approved for manual purchase/i).length).toBeGreaterThan(
-      0
-    );
+    expect(screen.getByRole("button", { name: /open beatport cart \(1\)/i })).toBeVisible();
+    expect(screen.getByText(/1 added to cart/i)).toBeVisible();
     expect(
       screen.getAllByText(/purchased download acquired for packaging/i).length
     ).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("button", {
-        name: /approve beatport candidate for anyma - consciousness/i
-      })
-    ).toBeVisible();
     expect(
       screen.getByRole("button", {
         name: /reject beatport candidate for anyma - consciousness/i
@@ -46,7 +40,7 @@ describe("RunReportScreen Beatport review lane", () => {
     ).toBeVisible();
     expect(
       screen.queryByRole("button", {
-        name: /approve beatport candidate for mau p - drugs from amsterdam/i
+        name: /approve beatport candidate for anyma - consciousness/i
       })
     ).not.toBeInTheDocument();
   });
@@ -67,6 +61,9 @@ function buildBeatportReviewReport() {
         sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3", "wav"],
         candidateId: "beatport-queue-1",
+        cartDetail: "Added track to the Beatport cart.",
+        cartStatus: "added",
+        cartUpdatedAt: "2026-03-31T14:05:30.000Z",
         createdAt: "2026-03-31T14:05:00.000Z",
         id: "review-1",
         mixLabel: "Extended Mix",
@@ -76,7 +73,7 @@ function buildBeatportReviewReport() {
         providerUrl: "https://www.beatport.com/track/consciousness/queue-1",
         queueName: "beatport-review",
         runTrackId: "track-1",
-        status: "approved",
+        status: "queued",
         summary: "Queued after all automatic free-source providers missed.",
         track: {
           artist: "Anyma",
@@ -91,6 +88,9 @@ function buildBeatportReviewReport() {
         sourceBasis: "purchase-entitlement",
         availableFormats: ["mp3"],
         candidateId: "beatport-queue-2",
+        cartDetail: null,
+        cartStatus: null,
+        cartUpdatedAt: null,
         createdAt: "2026-03-31T14:06:00.000Z",
         id: "review-2",
         mixLabel: null,
@@ -127,6 +127,9 @@ function buildBeatportReviewReport() {
           sourceBasis: "purchase-entitlement",
           availableFormats: ["mp3", "wav"],
           candidateId: "beatport-queue-1",
+          cartDetail: "Added track to the Beatport cart.",
+          cartStatus: "added",
+          cartUpdatedAt: "2026-03-31T14:05:30.000Z",
           createdAt: "2026-03-31T14:05:00.000Z",
           id: "review-1",
           mixLabel: "Extended Mix",
@@ -136,7 +139,7 @@ function buildBeatportReviewReport() {
           providerUrl: "https://www.beatport.com/track/consciousness/queue-1",
           queueName: "beatport-review",
           runTrackId: "track-1",
-          status: "approved",
+          status: "queued",
           summary: "Queued after all automatic free-source providers missed.",
           track: {
             artist: "Anyma",
@@ -162,6 +165,9 @@ function buildBeatportReviewReport() {
           sourceBasis: "purchase-entitlement",
           availableFormats: ["mp3"],
           candidateId: "beatport-queue-2",
+          cartDetail: null,
+          cartStatus: null,
+          cartUpdatedAt: null,
           createdAt: "2026-03-31T14:06:00.000Z",
           id: "review-2",
           mixLabel: null,

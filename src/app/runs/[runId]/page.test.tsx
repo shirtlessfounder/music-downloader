@@ -256,7 +256,7 @@ describe("RunReportPage", () => {
       ).toBeGreaterThan(0);
       expect(
         screen.getByRole("button", {
-          name: /approve beatport candidate for anyma - consciousness/i
+          name: /open beatport cart \(1\)/i
         })
       ).toBeVisible();
       expect(
@@ -271,7 +271,7 @@ describe("RunReportPage", () => {
       ).toBeVisible();
       expect(
         screen.queryByRole("button", {
-          name: /approve beatport candidate for mau p - drugs from amsterdam/i
+          name: /approve beatport candidate for anyma - consciousness/i
         })
       ).not.toBeInTheDocument();
       expect(queuedReview.candidateId).toBe("beatport-queue-1");
