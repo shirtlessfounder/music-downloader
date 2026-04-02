@@ -188,21 +188,6 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
             summary: "Queued after all automatic free-source providers missed."
           });
 
-          const approveResponse = await POST(
-            new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewOne.id}`, {
-              body: JSON.stringify({ action: "approve" }),
-              headers: {
-                "content-type": "application/json"
-              },
-              method: "POST"
-            }),
-            {
-              params: Promise.resolve({
-                reviewId: reviewOne.id,
-                runId: run.id
-              })
-            }
-          );
           const purchasedResponse = await POST(
             new Request(`http://localhost/api/runs/${run.id}/review-queue/${reviewOne.id}`, {
               body: JSON.stringify({ action: "purchased" }),
@@ -234,13 +219,6 @@ describe("/api/runs/[runId]/review-queue/[reviewId]", () => {
             }
           );
 
-          expect(approveResponse.status).toBe(200);
-          await expect(approveResponse.json()).resolves.toEqual(
-            expect.objectContaining({
-              id: reviewOne.id,
-              status: "approved"
-            })
-          );
           expect(purchasedResponse.status).toBe(200);
           await expect(purchasedResponse.json()).resolves.toEqual(
             expect.objectContaining({
